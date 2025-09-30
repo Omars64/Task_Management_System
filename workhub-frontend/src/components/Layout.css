@@ -5,7 +5,7 @@
 
 .sidebar {
   width: 250px;
-  background: white;
+  background: #45818e;
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
@@ -21,7 +21,7 @@
 
 .sidebar-header {
   padding: 20px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -30,7 +30,7 @@
 .sidebar-title {
   font-size: 20px;
   font-weight: 700;
-  color: var(--primary-color);
+  color: white;
 }
 
 .sidebar.closed .sidebar-title {
@@ -42,7 +42,7 @@
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: var(--text-light);
+  color: white;
   padding: 5px;
 }
 
@@ -56,20 +56,21 @@
   display: flex;
   align-items: center;
   padding: 12px 20px;
-  color: var(--text-color);
+  color: rgba(255, 255, 255, 0.9);
   text-decoration: none;
   transition: all 0.2s;
   position: relative;
 }
 
 .nav-item:hover {
-  background-color: var(--bg-color);
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
 }
 
 .nav-item.active {
-  background-color: #dbeafe;
-  color: var(--primary-color);
-  border-left: 3px solid var(--primary-color);
+  background-color: rgba(255, 255, 255, 0.15);
+  color: white;
+  border-left: 3px solid white;
 }
 
 .nav-icon {
@@ -104,7 +105,7 @@
 
 .sidebar-footer {
   padding: 20px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -121,7 +122,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--primary-color);
+  background: rgba(255, 255, 255, 0.2);
   color: white;
   display: flex;
   align-items: center;
@@ -144,11 +145,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: white;
 }
 
 .user-role {
   font-size: 12px;
-  color: var(--text-light);
+  color: rgba(255, 255, 255, 0.7);
   text-transform: capitalize;
 }
 
@@ -156,14 +158,14 @@
   background: none;
   border: none;
   font-size: 20px;
-  color: var(--text-light);
+  color: rgba(255, 255, 255, 0.8);
   cursor: pointer;
   padding: 5px;
   transition: color 0.2s;
 }
 
 .logout-btn:hover {
-  color: var(--danger-color);
+  color: white;
 }
 
 .main-content {
