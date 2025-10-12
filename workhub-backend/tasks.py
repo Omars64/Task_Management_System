@@ -1,8 +1,9 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, Task, User, Notification, Comment
+from models import db, Task, User, Notification, Comment, TimeLog
 from datetime import datetime
 from auth import admin_required
+from email_service import send_notification_email
 
 tasks_bp = Blueprint('tasks', __name__)
 
@@ -16,6 +17,23 @@ def create_notification(user_id, title, message, notification_type, task_id=None
         related_task_id=task_id
     )
     db.session.add(notification)
+    
+    # Send email notification if user has email notifications enabled
+    user = User.query.get(user_id)
+    if user and user.notifications_enabled:
+        task_title = None
+        if task_id:
+            task = Task.query.get(task_id)
+            if task:
+                task_title = task.title
+        
+        send_notification_email(
+            user.email,
+            user.name,
+            title,
+            message,
+            task_title
+        )
 
 @tasks_bp.route('/', methods=['GET'])
 @jwt_required()
@@ -289,6 +307,91 @@ def add_comment(task_id):
             'message': 'Comment added successfully',
             'comment': comment.to_dict()
         }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@tasks_bp.route('/<int:task_id>/time-logs', methods=['POST'])
+@jwt_required()
+def add_time_log(task_id):
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        task = Task.query.get(task_id)
+        
+        if not task:
+            return jsonify({'error': 'Task not found'}), 404
+        
+        # Check access
+        if current_user.role != 'admin' and task.assigned_to != current_user_id:
+            return jsonify({'error': 'Access denied'}), 403
+        
+        data = request.get_json()
+        
+        if not data.get('hours') or data.get('hours') <= 0:
+            return jsonify({'error': 'Valid hours are required'}), 400
+        
+        time_log = TimeLog(
+            task_id=task_id,
+            user_id=current_user_id,
+            hours=data['hours'],
+            description=data.get('description', '')
+        )
+        
+        db.session.add(time_log)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Time logged successfully',
+            'time_log': time_log.to_dict()
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@tasks_bp.route('/<int:task_id>/time-logs', methods=['GET'])
+@jwt_required()
+def get_time_logs(task_id):
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        task = Task.query.get(task_id)
+        
+        if not task:
+            return jsonify({'error': 'Task not found'}), 404
+        
+        # Check access
+        if current_user.role != 'admin' and task.assigned_to != current_user_id:
+            return jsonify({'error': 'Access denied'}), 403
+        
+        time_logs = TimeLog.query.filter_by(task_id=task_id).order_by(TimeLog.logged_at.desc()).all()
+        
+        return jsonify([log.to_dict() for log in time_logs]), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@tasks_bp.route('/time-logs/<int:log_id>', methods=['DELETE'])
+@jwt_required()
+def delete_time_log(log_id):
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        time_log = TimeLog.query.get(log_id)
+        
+        if not time_log:
+            return jsonify({'error': 'Time log not found'}), 404
+        
+        # Check access - only the user who created the log or admin can delete
+        if current_user.role != 'admin' and time_log.user_id != current_user_id:
+            return jsonify({'error': 'Access denied'}), 403
+        
+        db.session.delete(time_log)
+        db.session.commit()
+        
+        return jsonify({'message': 'Time log deleted successfully'}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500

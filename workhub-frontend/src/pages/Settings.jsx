@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { settingsAPI, usersAPI } from '../services/api';
 
 const Settings = () => {
   const { user, isAdmin, updateUser } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState('personal');
   const [personalSettings, setPersonalSettings] = useState({
     theme: 'light',
@@ -27,6 +29,11 @@ const Settings = () => {
       const personalRes = await settingsAPI.getPersonal();
       setPersonalSettings(personalRes.data);
       
+      // Sync theme with context
+      if (personalRes.data.theme !== theme) {
+        setTheme(personalRes.data.theme);
+      }
+      
       if (isAdmin()) {
         const systemRes = await settingsAPI.getSystem();
         setSystemSettings(systemRes.data);
@@ -40,6 +47,9 @@ const Settings = () => {
     e.preventDefault();
     try {
       await settingsAPI.updatePersonal(personalSettings);
+      
+      // Update theme in context
+      setTheme(personalSettings.theme);
       
       // Update user in context
       const updatedUser = await usersAPI.getById(user.id);

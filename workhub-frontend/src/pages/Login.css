@@ -58,3 +58,29 @@
 .demo-credentials strong {
   color: var(--text-color);
 }
+
+.input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-light);
+  font-size: 16px;
+  z-index: 1;
+}
+
+.input-group .form-input {
+  padding-left: 40px;
+}
+
+.text-primary {
+  color: var(--primary-color);
+}
+
+.text-primary:hover {
+  color: var(--primary-dark);
+}

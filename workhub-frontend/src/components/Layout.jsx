@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { notificationsAPI } from '../services/api';
 import { 
   FiHome, FiCheckSquare, FiUsers, FiBell, FiBarChart2, 
-  FiSettings, FiLogOut, FiMenu, FiX 
+  FiSettings, FiLogOut, FiMenu, FiX, FiSun, FiMoon 
 } from 'react-icons/fi';
 import './Layout.css';
 
 const Layout = () => {
   const { user, logout, isAdmin } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -86,9 +88,18 @@ const Layout = () => {
               </div>
             )}
           </div>
-          <button className="logout-btn" onClick={handleLogout} title="Logout">
-            <FiLogOut />
-          </button>
+          <div className="footer-actions">
+            <button 
+              className="theme-toggle-btn" 
+              onClick={toggleTheme} 
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+            >
+              {theme === 'light' ? <FiMoon /> : <FiSun />}
+            </button>
+            <button className="logout-btn" onClick={handleLogout} title="Logout">
+              <FiLogOut />
+            </button>
+          </div>
         </div>
       </aside>
 

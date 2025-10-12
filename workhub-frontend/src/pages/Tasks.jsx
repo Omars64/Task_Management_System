@@ -1,17 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useApiError } from '../hooks/useApiError';
 import { tasksAPI, usersAPI } from '../services/api';
-import { FiPlus, FiEdit2, FiTrash2, FiMessageSquare, FiX } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiMessageSquare, FiX, FiClock } from 'react-icons/fi';
 import './Tasks.css';
 
 const Tasks = () => {
   const { isAdmin } = useAuth();
+  const { handleApiError, handleApiSuccess } = useApiError();
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showTaskDetail, setShowTaskDetail] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [showTimeLogModal, setShowTimeLogModal] = useState(false);
+  const [timeLogs, setTimeLogs] = useState([]);
+  const [timeLogForm, setTimeLogForm] = useState({
+    hours: '',
+    description: ''
+  });
+  const [commentForm, setCommentForm] = useState({
+    content: ''
+  });
   const [filters, setFilters] = useState({
     status: '',
     priority: '',
@@ -44,7 +55,7 @@ const Tasks = () => {
       const response = await tasksAPI.getAll(params);
       setTasks(response.data);
     } catch (error) {
-      console.error('Failed to fetch tasks:', error);
+      handleApiError(error, 'Failed to fetch tasks');
     } finally {
       setLoading(false);
     }
@@ -55,7 +66,7 @@ const Tasks = () => {
       const response = await usersAPI.getAll();
       setUsers(response.data);
     } catch (error) {
-      console.error('Failed to fetch users:', error);
+      handleApiError(error, 'Failed to fetch users');
     }
   };
 
@@ -64,14 +75,16 @@ const Tasks = () => {
     try {
       if (selectedTask) {
         await tasksAPI.update(selectedTask.id, formData);
+        handleApiSuccess('Task updated successfully');
       } else {
         await tasksAPI.create(formData);
+        handleApiSuccess('Task created successfully');
       }
       setShowModal(false);
       resetForm();
       fetchTasks();
     } catch (error) {
-      alert(error.response?.data?.error || 'Failed to save task');
+      handleApiError(error, 'Failed to save task');
     }
   };
 
@@ -79,9 +92,10 @@ const Tasks = () => {
     if (window.confirm('Are you sure you want to delete this task?')) {
       try {
         await tasksAPI.delete(id);
+        handleApiSuccess('Task deleted successfully');
         fetchTasks();
       } catch (error) {
-        alert(error.response?.data?.error || 'Failed to delete task');
+        handleApiError(error, 'Failed to delete task');
       }
     }
   };
@@ -104,17 +118,64 @@ const Tasks = () => {
       const response = await tasksAPI.getById(task.id);
       setSelectedTask(response.data);
       setShowTaskDetail(true);
+      // Fetch time logs for this task
+      const timeLogsResponse = await tasksAPI.getTimeLogs(task.id);
+      setTimeLogs(timeLogsResponse.data);
     } catch (error) {
-      console.error('Failed to fetch task details:', error);
+      handleApiError(error, 'Failed to fetch task details');
+    }
+  };
+
+  const handleAddTimeLog = async (e) => {
+    e.preventDefault();
+    try {
+      await tasksAPI.addTimeLog(selectedTask.id, timeLogForm);
+      handleApiSuccess('Time log added successfully');
+      setTimeLogForm({ hours: '', description: '' });
+      setShowTimeLogModal(false);
+      // Refresh time logs
+      const timeLogsResponse = await tasksAPI.getTimeLogs(selectedTask.id);
+      setTimeLogs(timeLogsResponse.data);
+    } catch (error) {
+      handleApiError(error, 'Failed to add time log');
+    }
+  };
+
+  const handleDeleteTimeLog = async (logId) => {
+    if (window.confirm('Are you sure you want to delete this time log?')) {
+      try {
+        await tasksAPI.deleteTimeLog(logId);
+        handleApiSuccess('Time log deleted successfully');
+        // Refresh time logs
+        const timeLogsResponse = await tasksAPI.getTimeLogs(selectedTask.id);
+        setTimeLogs(timeLogsResponse.data);
+      } catch (error) {
+        handleApiError(error, 'Failed to delete time log');
+      }
+    }
+  };
+
+  const handleAddComment = async (e) => {
+    e.preventDefault();
+    try {
+      await tasksAPI.addComment(selectedTask.id, commentForm.content);
+      handleApiSuccess('Comment added successfully');
+      setCommentForm({ content: '' });
+      // Refresh task details to get updated comments
+      const response = await tasksAPI.getById(selectedTask.id);
+      setSelectedTask(response.data);
+    } catch (error) {
+      handleApiError(error, 'Failed to add comment');
     }
   };
 
   const handleStatusUpdate = async (taskId, newStatus) => {
     try {
       await tasksAPI.update(taskId, { status: newStatus });
+      handleApiSuccess('Task status updated successfully');
       fetchTasks();
     } catch (error) {
-      alert(error.response?.data?.error || 'Failed to update status');
+      handleApiError(error, 'Failed to update status');
     }
   };
 
@@ -377,9 +438,28 @@ const Tasks = () => {
                   </div>
                 )}
               </div>
-              {selectedTask.comments && selectedTask.comments.length > 0 && (
-                <div className="task-detail-section">
-                  <h3><FiMessageSquare /> Comments</h3>
+              <div className="task-detail-section">
+                <h3><FiMessageSquare /> Comments</h3>
+                
+                {/* Add Comment Form */}
+                <form onSubmit={handleAddComment} style={{ marginBottom: '16px' }}>
+                  <div className="form-group">
+                    <textarea
+                      className="form-textarea"
+                      value={commentForm.content}
+                      onChange={(e) => setCommentForm({ content: e.target.value })}
+                      placeholder="Add a comment..."
+                      rows="3"
+                      required
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary btn-sm">
+                    Add Comment
+                  </button>
+                </form>
+
+                {/* Comments List */}
+                {selectedTask.comments && selectedTask.comments.length > 0 ? (
                   <div className="comments-list">
                     {selectedTask.comments.map(comment => (
                       <div key={comment.id} className="comment">
@@ -391,9 +471,98 @@ const Tasks = () => {
                       </div>
                     ))}
                   </div>
+                ) : (
+                  <p className="text-light">No comments yet</p>
+                )}
+              </div>
+              
+              <div className="task-detail-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3><FiClock /> Time Logs</h3>
+                  <button 
+                    className="btn btn-primary btn-sm" 
+                    onClick={() => setShowTimeLogModal(true)}
+                  >
+                    <FiPlus /> Add Time Log
+                  </button>
                 </div>
-              )}
+                {timeLogs.length === 0 ? (
+                  <p className="text-light">No time logs recorded</p>
+                ) : (
+                  <div className="time-logs-list">
+                    {timeLogs.map(log => (
+                      <div key={log.id} className="time-log-item">
+                        <div className="time-log-header">
+                          <div>
+                            <strong>{log.hours} hours</strong>
+                            <span className="text-light" style={{ marginLeft: '8px' }}>
+                              {new Date(log.logged_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <button 
+                            className="icon-btn" 
+                            onClick={() => handleDeleteTimeLog(log.id)}
+                            style={{ color: 'var(--danger-color)' }}
+                          >
+                            <FiTrash2 />
+                          </button>
+                        </div>
+                        {log.description && (
+                          <p className="time-log-description">{log.description}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Time Log Modal */}
+      {showTimeLogModal && (
+        <div className="modal-overlay" onClick={() => setShowTimeLogModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Add Time Log</h2>
+              <button className="modal-close" onClick={() => setShowTimeLogModal(false)}>
+                <FiX />
+              </button>
+            </div>
+            <form onSubmit={handleAddTimeLog}>
+              <div className="form-group">
+                <label className="form-label">Hours *</label>
+                <input
+                  type="number"
+                  step="0.25"
+                  min="0.25"
+                  className="form-input"
+                  value={timeLogForm.hours}
+                  onChange={(e) => setTimeLogForm({ ...timeLogForm, hours: e.target.value })}
+                  required
+                  placeholder="Enter hours worked"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                <textarea
+                  className="form-textarea"
+                  value={timeLogForm.description}
+                  onChange={(e) => setTimeLogForm({ ...timeLogForm, description: e.target.value })}
+                  placeholder="Describe what you worked on..."
+                  rows="3"
+                />
+              </div>
+              <div className="form-actions">
+                <button type="button" className="btn btn-outline" onClick={() => setShowTimeLogModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Add Time Log
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

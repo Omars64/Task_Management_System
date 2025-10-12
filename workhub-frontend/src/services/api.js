@@ -25,6 +25,7 @@ export const authAPI = {
   getCurrentUser: () => api.get('/auth/me'),
   changePassword: (oldPassword, newPassword) => 
     api.post('/auth/change-password', { old_password: oldPassword, new_password: newPassword }),
+  requestPasswordReset: (email) => api.post('/auth/reset-password', { email }),
 };
 
 // Users API
@@ -44,6 +45,9 @@ export const tasksAPI = {
   update: (id, data) => api.put(`/tasks/${id}`, data),
   delete: (id) => api.delete(`/tasks/${id}`),
   addComment: (id, content) => api.post(`/tasks/${id}/comments`, { content }),
+  addTimeLog: (id, data) => api.post(`/tasks/${id}/time-logs`, data),
+  getTimeLogs: (id) => api.get(`/tasks/${id}/time-logs`),
+  deleteTimeLog: (logId) => api.delete(`/tasks/time-logs/${logId}`),
 };
 
 // Notifications API

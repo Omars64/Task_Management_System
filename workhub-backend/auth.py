@@ -4,6 +4,7 @@ from models import db, User
 from functools import wraps
 import secrets
 import string
+from email_service import send_password_reset_email
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -103,12 +104,14 @@ def request_password_reset():
         # Generate reset token (simplified - in production use time-limited tokens)
         reset_token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(32))
         
-        # In production, send email with reset link
-        # For now, just return success
-        return jsonify({
-            'message': 'Password reset link sent to email',
-            'reset_token': reset_token  # Remove this in production
-        }), 200
+        # Send password reset email
+        email_sent = send_password_reset_email(user.email, user.name, reset_token)
+        
+        if email_sent:
+            return jsonify({'message': 'Password reset link sent to email'}), 200
+        else:
+            return jsonify({'error': 'Failed to send reset email. Please try again.'}), 500
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

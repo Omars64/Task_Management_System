@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from config import Config
@@ -9,6 +9,9 @@ from tasks import tasks_bp
 from notifications import notifications_bp
 from reports import reports_bp
 from settings import settings_bp
+from email_service import init_email
+from logging_config import setup_logging, log_api_access, log_security_event
+import time
 
 def create_app():
     app = Flask(__name__)
@@ -19,6 +22,40 @@ def create_app():
     bcrypt.init_app(app)
     JWTManager(app)
     CORS(app, resources={r"/*": {"origins": "*"}})
+    init_email(app)
+    
+    # Setup logging
+    setup_logging(app)
+    
+    # Request logging middleware
+    @app.before_request
+    def log_request_info():
+        request.start_time = time.time()
+    
+    @app.after_request
+    def log_response_info(response):
+        if hasattr(request, 'start_time'):
+            response_time = (time.time() - request.start_time) * 1000  # Convert to milliseconds
+            
+            # Get user ID if authenticated
+            user_id = None
+            try:
+                from flask_jwt_extended import get_jwt_identity
+                user_id = get_jwt_identity()
+            except:
+                pass
+            
+            # Log API access
+            log_api_access(
+                method=request.method,
+                endpoint=request.endpoint or request.path,
+                user_id=user_id,
+                ip_address=request.remote_addr,
+                status_code=response.status_code,
+                response_time=response_time
+            )
+        
+        return response
     
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/api/auth')

@@ -202,6 +202,33 @@
   color: var(--text-color);
 }
 
+/* Time Logs */
+.time-logs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.time-log-item {
+  padding: 12px;
+  background: var(--bg-color);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.time-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.time-log-description {
+  font-size: 14px;
+  color: var(--text-color);
+  margin: 0;
+}
+
 @media (max-width: 768px) {
   .filters {
     grid-template-columns: 1fr;
