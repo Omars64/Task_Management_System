@@ -1,13 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { notificationsAPI } from '../services/api';
 import { FiCheckCircle, FiTrash2 } from 'react-icons/fi';
+import { useModal } from '../hooks/useModal';
+import Modal from '../components/Modal';
 
 const Notifications = () => {
+  const { modalState, showConfirm, showSuccess, closeModal } = useModal();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // On open, fetch and mark all as read so sidebar badge clears immediately
     fetchNotifications();
+    (async () => {
+      try {
+        await notificationsAPI.markAllAsRead();
+        // inform layout to refresh unread badge
+        window.dispatchEvent(new Event('notifications:refresh-count'));
+        fetchNotifications();
+      } catch (e) {}
+    })();
   }, []);
 
   const fetchNotifications = async () => {
@@ -26,6 +38,7 @@ const Notifications = () => {
     try {
       await notificationsAPI.markAsRead(id);
       fetchNotifications();
+      window.dispatchEvent(new Event('notifications:refresh-count'));
     } catch (error) {
       console.error('Failed to mark as read:', error);
     }
@@ -35,6 +48,7 @@ const Notifications = () => {
     try {
       await notificationsAPI.markAllAsRead();
       fetchNotifications();
+      window.dispatchEvent(new Event('notifications:refresh-count'));
     } catch (error) {
       console.error('Failed to mark all as read:', error);
     }
@@ -44,16 +58,24 @@ const Notifications = () => {
     try {
       await notificationsAPI.delete(id);
       fetchNotifications();
+      window.dispatchEvent(new Event('notifications:refresh-count'));
     } catch (error) {
       console.error('Failed to delete notification:', error);
     }
   };
 
   const handleClearAll = async () => {
-    if (window.confirm('Are you sure you want to clear all notifications?')) {
+    const confirmed = await showConfirm(
+      'Are you sure you want to clear all notifications? This action cannot be undone.',
+      'Clear All Notifications'
+    );
+    
+    if (confirmed) {
       try {
         await notificationsAPI.clearAll();
         fetchNotifications();
+        showSuccess('All notifications cleared successfully');
+        window.dispatchEvent(new Event('notifications:refresh-count'));
       } catch (error) {
         console.error('Failed to clear notifications:', error);
       }
@@ -120,6 +142,21 @@ const Notifications = () => {
           </div>
         )}
       </div>
+
+      {/* Modal Component */}
+      <Modal
+        isOpen={modalState.isOpen}
+        onClose={closeModal}
+        onConfirm={modalState.onConfirm}
+        title={modalState.title}
+        message={modalState.message}
+        type={modalState.type}
+        confirmText={modalState.confirmText}
+        cancelText={modalState.cancelText}
+        showCancel={modalState.showCancel}
+      >
+        {modalState.children}
+      </Modal>
     </div>
   );
 };

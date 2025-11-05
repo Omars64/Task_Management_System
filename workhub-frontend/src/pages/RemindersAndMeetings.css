@@ -1,0 +1,338 @@
+.reminders-meetings-page {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.reminder-meeting-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reminder-meeting-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reminder-meeting-form .form-group label {
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+  font-size: 14px;
+}
+
+.reminder-meeting-form .form-group input,
+.reminder-meeting-form .form-group textarea,
+.reminder-meeting-form .form-group select {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #111827);
+}
+
+.reminder-meeting-form .form-group input:focus,
+.reminder-meeting-form .form-group textarea:focus,
+.reminder-meeting-form .form-group select:focus {
+  outline: none;
+  border-color: var(--primary-color, #68939d);
+  box-shadow: 0 0 0 3px rgba(104, 147, 157, 0.1);
+}
+
+.reminder-meeting-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.reminder-meeting-form .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.reminder-meeting-form small {
+  font-size: 12px;
+  color: var(--text-light, #6b7280);
+  margin-top: 4px;
+  display: block;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+  margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.filters-panel {
+  background: var(--bg-secondary, #f9fafb);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-group label {
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+}
+
+.filter-group select {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #111827);
+  font-size: 14px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid var(--border-color, #e5e7eb);
+  margin-bottom: 24px;
+}
+
+.tab {
+  padding: 12px 24px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-light, #6b7280);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  margin-bottom: -2px;
+}
+
+.tab:hover {
+  color: var(--text-primary, #111827);
+}
+
+.tab.active {
+  color: var(--primary-color, #68939d);
+  border-bottom-color: var(--primary-color, #68939d);
+}
+
+.content-panel {
+  min-height: 400px;
+}
+
+.reminders-list,
+.meetings-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 20px;
+}
+
+.reminder-card,
+.meeting-card {
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  padding: 20px;
+  transition: all 0.2s;
+}
+
+.reminder-card:hover,
+.meeting-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.card-title .icon {
+  color: var(--primary-color, #68939d);
+  flex-shrink: 0;
+}
+
+.card-title h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+  margin: 0;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--text-light, #6b7280);
+  transition: color 0.2s;
+  border-radius: 4px;
+}
+
+.btn-icon:hover {
+  color: var(--error-color, #ef4444);
+  background: var(--bg-tertiary, #f3f4f6);
+}
+
+.card-description {
+  color: var(--text-secondary, #4b5563);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 12px 0;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary, #4b5563);
+}
+
+.meta-item svg {
+  flex-shrink: 0;
+}
+
+.badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge-custom {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.badge-days_before {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge-time_based {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge-task_deadline {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-sent {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+}
+
+.status-badge.invited {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.card-footer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  font-size: 12px;
+  color: var(--text-light, #6b7280);
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-light, #6b7280);
+}
+
+.empty-state svg {
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state p {
+  font-size: 16px;
+  margin: 0;
+}
+
+/* Dark mode */
+[data-theme="dark"] .reminders-meetings-page {
+  background: var(--bg-primary, #111827);
+}
+
+[data-theme="dark"] .filters-panel {
+  background: var(--bg-secondary, #1f2937);
+  border-color: var(--border-color, #4b5563);
+}
+
+[data-theme="dark"] .reminder-card,
+[data-theme="dark"] .meeting-card {
+  background: var(--bg-secondary, #1f2937);
+  border-color: var(--border-color, #4b5563);
+}
+
+[data-theme="dark"] .reminder-card:hover,
+[data-theme="dark"] .meeting-card:hover {
+  background: var(--bg-tertiary, #374151);
+}
+
+[data-theme="dark"] .tabs {
+  border-bottom-color: var(--border-color, #4b5563);
+}
+

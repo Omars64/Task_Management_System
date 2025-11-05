@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { notificationsAPI } from '../services/api';
+import { notificationsAPI, chatAPI } from '../services/api';
 import { 
   FiHome, FiCheckSquare, FiUsers, FiBell, FiBarChart2, 
-  FiSettings, FiLogOut, FiMenu, FiX 
+  FiSettings, FiLogOut, FiMenu, FiX, FiList, FiCalendar, FiClock, FiMessageCircle 
 } from 'react-icons/fi';
 import './Layout.css';
 
@@ -14,12 +14,27 @@ const Layout = () => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
   useEffect(() => {
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000); // Check every 30 seconds
-    return () => clearInterval(interval);
+    fetchChatUnreadCount();
+    const notifInterval = setInterval(fetchUnreadCount, 30000); // notifications every 30s
+    const chatInterval = setInterval(fetchChatUnreadCount, 5000); // chat every 5s
+    // Listen for notification updates from other components
+    const onRefresh = () => fetchUnreadCount();
+    window.addEventListener('notifications:refresh-count', onRefresh);
+    return () => { 
+      clearInterval(notifInterval); 
+      clearInterval(chatInterval);
+      window.removeEventListener('notifications:refresh-count', onRefresh);
+    };
   }, []);
+
+  // When route changes (e.g., navigating to /notifications), refresh badge immediately
+  useEffect(() => {
+    fetchUnreadCount();
+  }, [location.pathname]);
 
   const fetchUnreadCount = async () => {
     try {
@@ -27,6 +42,17 @@ const Layout = () => {
       setUnreadCount(response.data.unread_count);
     } catch (error) {
       console.error('Failed to fetch unread count:', error);
+    }
+  };
+
+  const fetchChatUnreadCount = async () => {
+    try {
+      const convsRes = await chatAPI.getConversations();
+      const convs = convsRes.data || [];
+      const total = convs.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+      setChatUnreadCount(total);
+    } catch (error) {
+      // silent fail to avoid spam
     }
   };
 
@@ -38,9 +64,15 @@ const Layout = () => {
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: FiHome, show: true },
     { path: '/tasks', label: 'Tasks', icon: FiCheckSquare, show: true },
+    { path: '/kanban', label: 'Kanban', icon: FiList, show: true },
+    { path: '/calendar', label: 'Calendar', icon: FiCalendar, show: true },
+    { path: '/projects', label: 'Projects', icon: FiList, show: true },
+    { path: '/reminders-meetings', label: 'Reminders & Meetings', icon: FiClock, show: true },
+    { path: '/chat', label: 'Chat', icon: FiMessageCircle, show: true, badge: chatUnreadCount },
     { path: '/users', label: 'Users', icon: FiUsers, show: isAdmin() },
     { path: '/notifications', label: 'Notifications', icon: FiBell, show: true, badge: unreadCount },
     { path: '/reports', label: 'Reports', icon: FiBarChart2, show: true },
+    { path: '/thingstodo', label: 'Things to do', icon: FiList, show: true },
     { path: '/settings', label: 'Settings', icon: FiSettings, show: true },
   ];
 

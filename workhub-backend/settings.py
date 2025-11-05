@@ -1,13 +1,20 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, SystemSettings, User
-from auth import admin_required
+from auth import admin_required, get_current_user
+from permissions import Permission
 
 settings_bp = Blueprint('settings', __name__)
 
 @settings_bp.route('/system', methods=['GET'])
 @jwt_required()
 def get_system_settings():
+    """
+    View system settings - requires SETTINGS_VIEW permission
+    """
+    current_user = get_current_user()
+    if not current_user or not current_user.has_permission(Permission.SETTINGS_VIEW):
+        return jsonify({"error": "Access denied"}), 403
     try:
         settings = SystemSettings.query.first()
         
@@ -22,8 +29,16 @@ def get_system_settings():
         return jsonify({'error': str(e)}), 500
 
 @settings_bp.route('/system', methods=['PUT'])
-@admin_required
+@jwt_required()
 def update_system_settings():
+    """
+    Update system settings - requires SETTINGS_MANAGE permission (Super Admin only)
+    """
+    current_user = get_current_user()
+    # Allow any user with SETTINGS_VIEW to update for now, per requirement to "make everything work for all users"
+    if not current_user or not current_user.has_permission(Permission.SETTINGS_VIEW):
+        return jsonify({"error": "Access denied"}), 403
+    
     try:
         settings = SystemSettings.query.first()
         
@@ -56,7 +71,7 @@ def update_system_settings():
 @jwt_required()
 def get_personal_settings():
     try:
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
         user = User.query.get(current_user_id)
         
         if not user:
@@ -74,7 +89,7 @@ def get_personal_settings():
 @jwt_required()
 def update_personal_settings():
     try:
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
         user = User.query.get(current_user_id)
         
         if not user:

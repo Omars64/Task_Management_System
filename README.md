@@ -450,6 +450,11 @@ workhub-frontend/
 - Check JWT_SECRET_KEY is set
 - Verify token expiration settings
 
+### Data Safety
+- Back up the database before resets or rebuilds.
+- Prefer `docker-compose down` (non-destructive). Avoid `down -v` unless you intend to delete your data.
+- Use scripts in `scripts/` to create and restore backups.
+
 ## 📄 License
 
 This project is created for educational and demonstration purposes.

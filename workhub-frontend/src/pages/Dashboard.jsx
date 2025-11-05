@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { tasksAPI, reportsAPI } from '../services/api';
-import { FiCheckSquare, FiClock, FiTrendingUp, FiUsers } from 'react-icons/fi';
+import { tasksAPI, reportsAPI, projectsAPI, usersAPI } from '../services/api';
+import { FiCheckSquare, FiClock, FiTrendingUp, FiUsers, FiFolder } from 'react-icons/fi';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -9,6 +9,7 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [recentTasks, setRecentTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [projectsCount, setProjectsCount] = useState(0);
 
   useEffect(() => {
     fetchDashboardData();
@@ -18,20 +19,32 @@ const Dashboard = () => {
     try {
       setLoading(true);
       
-      if (isAdmin()) {
-        const [overviewRes, tasksRes] = await Promise.all([
-          reportsAPI.getAdminOverview(),
-          tasksAPI.getAll({ limit: 5 })
-        ]);
-        setStats(overviewRes.data);
-        setRecentTasks(tasksRes.data.slice(0, 5));
+      const role = (user?.role || '').toLowerCase();
+      // Always rely on backend scoping for tasks, then aggregate on client
+      const allTasksRes = await tasksAPI.getAll();
+      const allTasks = Array.isArray(allTasksRes.data) ? allTasksRes.data : [];
+      setRecentTasks(allTasks.slice(0, 5));
+      const counts = allTasks.reduce((acc, t) => {
+        acc.total += 1;
+        acc[t.status] = (acc[t.status] || 0) + 1;
+        return acc;
+      }, { total: 0, todo: 0, in_progress: 0, completed: 0 });
+      if (role === 'super_admin' || role === 'admin') {
+        // Global view
+        setStats({ status_counts: { ...counts }, user_stats: { total: (await usersAPI.getAll().then(r=>r.data.length).catch(()=>0)) } });
+        const { data: projects } = await projectsAPI.getAll().catch(()=>({ data: [] }));
+        setProjectsCount(Array.isArray(projects) ? projects.length : 0);
+      } else if (role === 'manager' || role === 'team_lead') {
+        // Project-scoped handled by backend tasks scope; still show project count for their projects
+        setStats({ status_counts: { ...counts } });
+        const { data: myProjects } = await projectsAPI.getMine().catch(()=>({ data: [] }));
+        setProjectsCount(Array.isArray(myProjects) ? myProjects.length : 0);
       } else {
-        const [statusRes, tasksRes] = await Promise.all([
-          reportsAPI.getPersonalTaskStatus(),
-          tasksAPI.getAll()
-        ]);
-        setStats(statusRes.data.status_counts);
-        setRecentTasks(tasksRes.data.slice(0, 5));
+        // Developer / Viewer: assigned tasks only (backend scopes); no user count
+        setStats({ total: counts.total, completed: counts.completed, in_progress: counts.in_progress, todo: counts.todo });
+        // projects they see: 0 or those included in their tasks; compute unique project ids
+        const pids = new Set(allTasks.map(t => t.project_id).filter(Boolean));
+        setProjectsCount(pids.size);
       }
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
@@ -157,6 +170,15 @@ const Dashboard = () => {
             </div>
           </>
         )}
+        <div className="stat-card">
+          <div className="stat-icon info">
+            <FiFolder />
+          </div>
+          <div className="stat-content">
+            <div className="stat-value">{projectsCount}</div>
+            <div className="stat-label">Projects</div>
+          </div>
+        </div>
       </div>
 
       <div className="card">

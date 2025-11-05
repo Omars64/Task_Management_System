@@ -1,0 +1,137 @@
+# Google Cloud Build configuration for WorkHub
+# This file defines the build and deployment process when using Cloud Build
+# instead of GitHub Actions
+
+options:
+  machineType: 'N1_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _REGION: 'us-central1'  # Most cost-effective region with good reliability
+  _BACKEND_SERVICE: 'workhub-backend'
+  _FRONTEND_SERVICE: 'workhub-frontend'
+  _ARTIFACT_REGISTRY_REPO: 'workhub-repo'
+  _CLOUD_SQL_CONNECTION: 'genai-workhub:us-central1:workhub-db'
+  _CLOUD_STORAGE_BUCKET: 'genai-workhub-workhub-uploads'
+  _DB_USER: 'sqlserver'
+  _DB_NAME: 'workhub'
+  _SERVICE_ACCOUNT: 'workhub-cloud-run-sa@genai-workhub.iam.gserviceaccount.com'
+
+steps:
+  # Step 1: Build backend Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-backend'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_BACKEND_SERVICE}:${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_BACKEND_SERVICE}:latest'
+      - './workhub-backend'
+    waitFor: ['-']
+
+  # Step 2: Build frontend Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'VITE_API_URL=https://${_BACKEND_SERVICE}-${PROJECT_ID}.a.run.app'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_FRONTEND_SERVICE}:${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_FRONTEND_SERVICE}:latest'
+      - './workhub-frontend'
+    waitFor: ['-']
+
+  # Step 3: Push backend image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-backend'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_BACKEND_SERVICE}'
+    waitFor: ['build-backend']
+
+  # Step 4: Push frontend image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-frontend'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_FRONTEND_SERVICE}'
+    waitFor: ['build-frontend']
+
+  # Step 5: Deploy backend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-backend'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_BACKEND_SERVICE}'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_BACKEND_SERVICE}:${SHORT_SHA}'
+      - '--platform=managed'
+      - '--region=${_REGION}'
+      - '--allow-unauthenticated'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--min-instances=1'
+      - '--max-instances=10'
+      - '--timeout=300'
+      - '--set-cloudsql-instances=${_CLOUD_SQL_CONNECTION}'
+      - '--set-secrets=DB_PASSWORD=workhub-db-password:latest,SECRET_KEY=workhub-secret-key:latest,JWT_SECRET_KEY=workhub-jwt-secret:latest,MAIL_PASSWORD=workhub-mail-password:latest'
+      - '--set-env-vars=CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION},DB_NAME=${_DB_NAME},DB_USER=${_DB_USER},DB_DIALECT=mssql,USE_CLOUD_STORAGE=true,CLOUD_STORAGE_BUCKET=${_CLOUD_STORAGE_BUCKET},GCP_PROJECT=${PROJECT_ID},FRONTEND_URL=https://${_FRONTEND_SERVICE}-${PROJECT_ID}.a.run.app,EMAIL_NOTIFICATIONS_ENABLED=true'
+      - '--service-account=${_SERVICE_ACCOUNT}'
+    waitFor: ['push-backend']
+
+  # Step 6: Deploy frontend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_FRONTEND_SERVICE}'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_FRONTEND_SERVICE}:${SHORT_SHA}'
+      - '--platform=managed'
+      - '--region=${_REGION}'
+      - '--allow-unauthenticated'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--min-instances=1'
+      - '--max-instances=5'
+      - '--timeout=60'
+      - '--port=80'
+      - '--service-account=${_SERVICE_ACCOUNT}'
+    waitFor: ['push-frontend', 'deploy-backend']
+
+  # Step 7: Verify deployment
+  - name: 'gcr.io/cloud-builders/curl'
+    id: 'verify-backend'
+    args:
+      - '-f'
+      - 'https://${_BACKEND_SERVICE}-${PROJECT_ID}.a.run.app/api/health'
+    waitFor: ['deploy-backend']
+
+  # Step 8: Output deployment URLs
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deployment-summary'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "✅ Deployment successful!"
+        echo "Backend: https://${_BACKEND_SERVICE}-${PROJECT_ID}.a.run.app"
+        echo "Frontend: https://${_FRONTEND_SERVICE}-${PROJECT_ID}.a.run.app"
+        echo "Commit: ${SHORT_SHA}"
+    waitFor: ['deploy-backend', 'deploy-frontend', 'verify-backend']
+
+timeout: '1800s'  # 30 minutes
+
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_BACKEND_SERVICE}:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_BACKEND_SERVICE}:latest'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_FRONTEND_SERVICE}:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY_REPO}/${_FRONTEND_SERVICE}:latest'
+

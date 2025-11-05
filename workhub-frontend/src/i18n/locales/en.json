@@ -1,0 +1,15 @@
+{
+  "app.title": "WorkHub Task Management",
+  "nav.dashboard": "Dashboard",
+  "nav.tasks": "Tasks",
+  "nav.kanban": "Kanban",
+  "nav.projects": "Projects",
+  "nav.reports": "Reports",
+  "nav.settings": "Settings",
+  "tasks.create": "Create Task",
+  "tasks.delete.confirm": "Are you sure you want to delete this task? This action cannot be undone.",
+  "tasks.filters.searchPlaceholder": "Search tasks...",
+  "common.save": "Save",
+  "common.cancel": "Cancel"
+}
+

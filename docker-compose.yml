@@ -1,53 +1,76 @@
-version: '3.8'
-
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: workhub-mysql
+  # SQL Server Database
+  database:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: workhub-db
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: workhub
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${SA_PASSWORD}
+      - MSSQL_PID=Developer
     ports:
-      - "3306:3306"
+      - "1433:1433"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mssql_data:/var/opt/mssql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 20s
+      test: ["CMD-SHELL", "bash -c 'if /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q \"SELECT 1\" -b -o /dev/null 2>&1; then exit 0; else exit 1; fi'"]
+      interval: 15s
+      timeout: 10s
       retries: 10
+      start_period: 90s
+    networks:
+      - workhub-network
 
+  # Backend API
   backend:
-    build: ./workhub-backend
+    build:
+      context: ./workhub-backend
+      dockerfile: Dockerfile
     container_name: workhub-backend
     environment:
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_NAME: workhub
-      DB_USER: root
-      DB_PASSWORD: rootpassword
-      SECRET_KEY: production-secret-key-change-this
-      JWT_SECRET_KEY: jwt-secret-key-change-this
+      - DB_DIALECT=mssql
+      - DB_HOST=database
+      - DB_PORT=1433
+      - DB_NAME=workhub
+      - DB_USER=sa
+      - DB_PASSWORD=${SA_PASSWORD}
+      - DB_DRIVER=ODBC Driver 18 for SQL Server
+      - DB_ODBC_PARAMS=Encrypt=no;TrustServerCertificate=yes
+      - SECRET_KEY=production-secret-key-change-me
+      - JWT_SECRET_KEY=production-jwt-secret-key
+      - MAIL_SERVER=${MAIL_SERVER}
+      - MAIL_PORT=${MAIL_PORT}
+      - MAIL_USE_TLS=True
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER}
+      - EMAIL_NOTIFICATIONS_ENABLED=${EMAIL_NOTIFICATIONS_ENABLED}
+      - FRONTEND_URL=http://localhost:3000
     ports:
       - "5000:5000"
     depends_on:
-      mysql:
+      database:
         condition: service_healthy
+    networks:
+      - workhub-network
     volumes:
-      - ./workhub-backend:/app
-    command: sh -c "sleep 10 && python init_db.py && python app.py"
+      - ./workhub-backend/uploads:/app/uploads
 
+  # Frontend
   frontend:
-    build: ./workhub-frontend
+    build:
+      context: ./workhub-frontend
+      dockerfile: Dockerfile
     container_name: workhub-frontend
     ports:
-      - "3000:3000"
+      - "3000:80"
     depends_on:
       - backend
-    volumes:
-      - ./workhub-frontend:/app
-      - /app/node_modules
-    stdin_open: true
-    tty: true
+    networks:
+      - workhub-network
 
 volumes:
-  mysql_data:
+  mssql_data:
+
+networks:
+  workhub-network:
+    driver: bridge

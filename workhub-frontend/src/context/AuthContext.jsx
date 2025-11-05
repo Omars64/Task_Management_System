@@ -53,7 +53,17 @@ export const AuthProvider = ({ children }) => {
   };
 
   const isAdmin = () => {
-    return user?.role === 'admin';
+    return user?.role === 'admin' || user?.role === 'super_admin';
+  };
+
+  const canCreateTasks = () => {
+    const role = user?.role?.toLowerCase();
+    return ['super_admin', 'admin', 'manager', 'team_lead', 'developer'].includes(role);
+  };
+
+  const canDeleteUsers = () => {
+    const role = user?.role?.toLowerCase();
+    return ['super_admin', 'admin'].includes(role);
   };
 
   const value = {
@@ -63,6 +73,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateUser,
     isAdmin,
+    canCreateTasks,
+    canDeleteUsers,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

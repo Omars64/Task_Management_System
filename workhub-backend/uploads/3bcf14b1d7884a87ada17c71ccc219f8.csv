@@ -1,0 +1,9 @@
+ID,Title,Description,Status,Priority,Assigned To,Created By,Due Date,Created At,Completed At
+1,Sample Task 1,This is a seeded sample task.,completed,medium,John Doe,Admin User,2025-11-03,2025-10-29 08:46,2025-10-29 09:23
+2,Sample Task 2,Second sample task for testing.,completed,high,Jane Smith,Admin User,2025-11-01,2025-10-29 08:46,2025-10-29 10:06
+1002,BluePrism,Create a blueprint of how the automation workflow is going to be like,in_progress,high,John Doe,Admin User,2025-11-06,2025-10-29 09:28,
+2002,API Documentation,Document API,todo,low,Jane Smith,Bob Johnson,2025-11-02,2025-10-29 09:48,
+3002,Network setup,Setting up networking and server,in_progress,medium,Bob Johnson,Bob Johnson,2025-11-15,2025-10-29 09:59,
+4002,Implement Authentication,Make sure the Authentication is implementedproperly,in_progress,low,Alice Williams,Omar Solanki,2025-11-04,2025-10-29 12:59,
+5002,Test task pagination,Implement Pagination in the application,todo,medium,Jane Smith,Omar Solanki,2025-11-08,2025-10-30 07:46,
+5003,Test the App,Proper Testing of the application,todo,medium,Bob Johnson,Omar Solanki,2025-11-06,2025-10-30 07:47,

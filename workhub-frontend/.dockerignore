@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.vscode
+.idea
+dist
+build
+.env
+.env.local
+.env.*.local
+*.md
+

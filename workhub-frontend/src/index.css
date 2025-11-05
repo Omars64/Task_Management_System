@@ -5,8 +5,8 @@
 }
 
 :root {
-  --primary-color: #2563eb;
-  --primary-dark: #1e40af;
+  --primary-color: #68939d;
+  --primary-dark: #4f7e86;
   --secondary-color: #64748b;
   --success-color: #10b981;
   --warning-color: #f59e0b;
@@ -20,10 +20,24 @@
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 
+/* Dark theme variables applied via data-theme="dark" on html */
+[data-theme="dark"] {
+  --bg-color: #0f172a; /* slate-900 */
+  --text-color: #e2e8f0; /* slate-200 */
+  --text-light: #94a3b8; /* slate-400 */
+  --border-color: #334155; /* slate-700 */
+  --primary-color: #88bbc3;
+  --primary-dark: #68939d;
+  --secondary-color: #94a3b8;
+  --success-color: #34d399;
+  --warning-color: #fbbf24;
+  --danger-color: #f87171;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-color);
@@ -133,7 +147,7 @@ code {
 
 /* Cards */
 .card {
-  background: white;
+  background: var(--bg-color);
   border-radius: 8px;
   padding: 24px;
   box-shadow: var(--shadow);
