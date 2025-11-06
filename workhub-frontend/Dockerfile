@@ -35,12 +35,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
 # Expose port
 EXPOSE 8080
 
-# Run as non-root user for security
-RUN chown -R nginx:nginx /usr/share/nginx/html && \
-    chown -R nginx:nginx /var/cache/nginx && \
-    chown -R nginx:nginx /var/log/nginx && \
-    chown -R nginx:nginx /etc/nginx/conf.d
-
-USER nginx
+# Run as root to avoid PID file permission issues on Cloud Run
+# (Cloud Run runs the container in a sandbox; this is acceptable here.)
 
 CMD ["nginx", "-g", "daemon off;"]
