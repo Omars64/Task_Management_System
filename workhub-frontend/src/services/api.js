@@ -2,11 +2,12 @@ import axios from 'axios';
 
 // Resolve API base URL in this order:
 // 1) Runtime global (window.__API_BASE__) if present
-// 2) Build-time Vite env VITE_API_URL
+// 2) Build-time Vite env VITE_API_URL (available at build time via import.meta.env)
 // 3) Hard fallback to production backend URL (ensures Cloud Run works even if build arg missing)
 // 4) Local fallback '/api' for dev
 const RUNTIME_BASE = (typeof window !== 'undefined' && window.__API_BASE__) || '';
-const BUILD_BASE = (typeof import !== 'undefined' && import.meta && import.meta.env && import.meta.env.VITE_API_URL) || '';
+// import.meta.env is always available in Vite - access directly
+const BUILD_BASE = (import.meta?.env?.VITE_API_URL) || '';
 const HARD_FALLBACK = 'https://workhub-backend-kf6vth5ica-uc.a.run.app/api';
 
 const API_URL = (RUNTIME_BASE || BUILD_BASE || HARD_FALLBACK || '/api');
