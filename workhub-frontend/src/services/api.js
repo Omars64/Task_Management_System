@@ -1,16 +1,17 @@
 import axios from 'axios';
 
-// Resolve API base URL in this order:
-// 1) Runtime global (window.__API_BASE__) if present
-// 2) Build-time Vite env VITE_API_URL (available at build time via import.meta.env)
-// 3) Hard fallback to production backend URL (ensures Cloud Run works even if build arg missing)
-// 4) Local fallback '/api' for dev
+// Resolve API base URL (root), then append '/api' consistently so routes match the backend blueprint
+// Order to resolve root:
+// 1) window.__API_BASE__ (runtime override)
+// 2) import.meta.env.VITE_API_URL (build-time)
+// 3) Hard fallback to production backend root (no trailing '/api')
+// If nothing found, default to '' and axios will use current origin; we then still append '/api'
 const RUNTIME_BASE = (typeof window !== 'undefined' && window.__API_BASE__) || '';
-// import.meta.env is always available in Vite - access directly
 const BUILD_BASE = (import.meta?.env?.VITE_API_URL) || '';
-const HARD_FALLBACK = 'https://workhub-backend-kf6vth5ica-uc.a.run.app/api';
+const HARD_FALLBACK_ROOT = 'https://workhub-backend-kf6vth5ica-uc.a.run.app';
 
-const API_URL = (RUNTIME_BASE || BUILD_BASE || HARD_FALLBACK || '/api');
+const ROOT = (RUNTIME_BASE || BUILD_BASE || HARD_FALLBACK_ROOT || '');
+const API_URL = `${ROOT.replace(/\/?$/, '')}/api`;
 
 const api = axios.create({
   baseURL: API_URL,
