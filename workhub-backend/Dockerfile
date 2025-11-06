@@ -36,6 +36,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD bash -c 'curl -f http://localhost:${PORT:-8080}/api/health || exit 1'
 
-# Use gunicorn for production, binding to the Cloud Run PORT
+# Use gunicorn for production, binding to the Cloud Run PORT. Use shell form to expand $PORT.
 ENV PORT=8080
-CMD ["gunicorn", "--bind", "0.0.0.0:${PORT}", "--workers", "4", "--threads", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "app:create_app()"]
+CMD sh -c 'gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 4 --threads 2 --timeout 120 --access-logfile - --error-logfile - "app:create_app()"'
