@@ -45,7 +45,7 @@ jobs:
       - name: Build backend Docker image
         working-directory: ./workhub-backend
         run: |
-          docker build \
+          docker build --no-cache \
             -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.BACKEND_IMAGE }}:${{ github.sha }} \
             -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.BACKEND_IMAGE }}:latest \
             .
@@ -81,7 +81,7 @@ jobs:
       - name: Build frontend Docker image
         working-directory: ./workhub-frontend
         run: |
-          docker build \
+          docker build --no-cache \
             --build-arg VITE_API_URL=${{ secrets.BACKEND_URL }} \
             -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
             -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.FRONTEND_IMAGE }}:latest \
