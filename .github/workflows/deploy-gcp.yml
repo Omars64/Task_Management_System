@@ -155,7 +155,7 @@ jobs:
             --min-instances 1 \
             --max-instances 5 \
             --timeout 60 \
-            --port 80 \
+            --port 8080 \
             --service-account ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
 
   verify-deployment:

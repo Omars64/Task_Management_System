@@ -30,10 +30,10 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+    CMD wget --quiet --tries=1 --spider http://localhost:8080/ || exit 1
 
 # Expose port
-EXPOSE 80
+EXPOSE 8080
 
 # Run as non-root user for security
 RUN chown -R nginx:nginx /usr/share/nginx/html && \
