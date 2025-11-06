@@ -29,12 +29,13 @@ RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
-EXPOSE 5000
+# Expose default port (Cloud Run will inject PORT env var)
+EXPOSE 8080
 
-# Health check
+# Health check (use PORT env var if set, default to 8080)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:5000/api/health || exit 1
+    CMD bash -c 'curl -f http://localhost:${PORT:-8080}/api/health || exit 1'
 
-# Use gunicorn for production, with graceful timeouts
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--threads", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "app:create_app()"]
+# Use gunicorn for production, binding to the Cloud Run PORT
+ENV PORT=8080
+CMD ["gunicorn", "--bind", "0.0.0.0:${PORT}", "--workers", "4", "--threads", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "app:create_app()"]
