@@ -1,104 +1,199 @@
-name: CI/CD Pipeline
+# This workflow is disabled until GCP secrets are configured
+# To enable: rename this file to deploy-gcp.yml and configure GitHub secrets
+# See GITHUB_SECRETS_SETUP.md for instructions
+
+name: Deploy to Google Cloud Platform
 
 on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
+      - production
   workflow_dispatch:
 
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: ${{ secrets.GCP_REGION }}
+  BACKEND_IMAGE: workhub-backend
+  FRONTEND_IMAGE: workhub-frontend
+  ARTIFACT_REGISTRY: ${{ secrets.GCP_REGION }}-docker.pkg.dev
+
 jobs:
-  # Basic code quality checks
-  lint-and-test:
-    name: Code Quality Checks
+  build-backend:
+    name: Build Backend Image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v4
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
-          python-version: '3.11'
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Install Python dependencies
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }}
+
+      - name: Build backend Docker image
         working-directory: ./workhub-backend
         run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install flake8 pytest pytest-flask
+          docker build \
+            -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.BACKEND_IMAGE }}:${{ github.sha }} \
+            -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.BACKEND_IMAGE }}:latest \
+            .
 
-      - name: Lint with flake8
-        working-directory: ./workhub-backend
+      - name: Push backend image to Artifact Registry
         run: |
-          # Stop the build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,__pycache__,.git
-          # Exit with warnings (but don't fail)
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics --exclude=venv,__pycache__,.git
+          docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.BACKEND_IMAGE }}:latest
 
-      - name: Run Python tests (if any)
-        working-directory: ./workhub-backend
-        run: |
-          # Only run tests if test files exist
-          if [ -d "tests" ] && [ "$(ls -A tests/*.py 2>/dev/null)" ]; then
-            pytest tests/ -v
-          else
-            echo "ℹ️ No tests found - skipping test execution"
-            echo "Create tests in workhub-backend/tests/ directory"
-          fi
-        continue-on-error: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install frontend dependencies
-        working-directory: ./workhub-frontend
-        run: |
-          npm ci
-
-      - name: Build frontend
-        working-directory: ./workhub-frontend
-        run: |
-          npm run build
-        env:
-          VITE_API_URL: http://localhost:5000
-
-      - name: Summary
-        run: |
-          echo "✅ Code quality checks completed"
-          echo "📦 Backend linted successfully"
-          echo "🔨 Frontend built successfully"
-
-  # Docker build validation (optional - only runs if you want to test Docker builds)
-  docker-build-test:
-    name: Docker Build Test
+  build-frontend:
+    name: Build Frontend Image
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      id-token: write
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Build backend Docker image (test)
-        working-directory: ./workhub-backend
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
         run: |
-          docker build -t workhub-backend:test .
+          gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }}
 
-      - name: Build frontend Docker image (test)
+      - name: Build frontend Docker image
         working-directory: ./workhub-frontend
         run: |
-          docker build --build-arg VITE_API_URL=http://localhost:5000 -t workhub-frontend:test .
+          docker build \
+            --build-arg VITE_API_URL=${{ secrets.BACKEND_URL }} \
+            -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
+            -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.FRONTEND_IMAGE }}:latest \
+            .
 
-      - name: Summary
+      - name: Push frontend image to Artifact Registry
         run: |
-          echo "✅ Docker images built successfully"
-          echo "🐳 Backend image: workhub-backend:test"
-          echo "🐳 Frontend image: workhub-frontend:test"
+          docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.FRONTEND_IMAGE }}:latest
+
+  deploy-backend:
+    name: Deploy Backend to Cloud Run
+    needs: build-backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Backend to Cloud Run
+        run: |
+          gcloud run deploy workhub-backend \
+            --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.BACKEND_IMAGE }}:${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --allow-unauthenticated \
+            --memory 2Gi \
+            --cpu 2 \
+            --min-instances 1 \
+            --max-instances 10 \
+            --timeout 300 \
+            --set-cloudsql-instances ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
+            --set-secrets DB_PASSWORD=workhub-db-password:latest,SECRET_KEY=workhub-secret-key:latest,JWT_SECRET_KEY=workhub-jwt-secret:latest,MAIL_PASSWORD=workhub-mail-password:latest \
+            --set-env-vars CLOUD_SQL_CONNECTION_NAME=${{ secrets.CLOUD_SQL_CONNECTION_NAME }},DB_NAME=workhub,DB_USER=${{ secrets.DB_USER }},DB_DIALECT=mssql,USE_CLOUD_STORAGE=true,CLOUD_STORAGE_BUCKET=${{ secrets.CLOUD_STORAGE_BUCKET }},GCP_PROJECT=${{ env.PROJECT_ID }},ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }},FRONTEND_URL=${{ secrets.FRONTEND_URL }},MAIL_SERVER=${{ secrets.MAIL_SERVER }},MAIL_PORT=${{ secrets.MAIL_PORT }},MAIL_USERNAME=${{ secrets.MAIL_USERNAME }},MAIL_DEFAULT_SENDER=${{ secrets.MAIL_DEFAULT_SENDER }},EMAIL_NOTIFICATIONS_ENABLED=true \
+            --service-account ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+  deploy-frontend:
+    name: Deploy Frontend to Cloud Run
+    needs: [build-frontend, deploy-backend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Frontend to Cloud Run
+        run: |
+          gcloud run deploy workhub-frontend \
+            --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --allow-unauthenticated \
+            --memory 512Mi \
+            --cpu 1 \
+            --min-instances 1 \
+            --max-instances 5 \
+            --timeout 60 \
+            --port 80 \
+            --service-account ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+  verify-deployment:
+    name: Verify Deployment
+    needs: [deploy-backend, deploy-frontend]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Get service URLs
+        id: urls
+        run: |
+          BACKEND_URL=$(gcloud run services describe workhub-backend --region ${{ env.REGION }} --format 'value(status.url)')
+          FRONTEND_URL=$(gcloud run services describe workhub-frontend --region ${{ env.REGION }} --format 'value(status.url)')
+          echo "BACKEND_URL=$BACKEND_URL" >> $GITHUB_ENV
+          echo "FRONTEND_URL=$FRONTEND_URL" >> $GITHUB_ENV
+
+      - name: Health check backend
+        run: |
+          echo "Checking backend health at $BACKEND_URL/api/health"
+          curl -f "$BACKEND_URL/api/health" || exit 1
+
+      - name: Health check frontend
+        run: |
+          echo "Checking frontend at $FRONTEND_URL"
+          curl -f "$FRONTEND_URL" || exit 1
+
+      - name: Deployment summary
+        run: |
+          echo "✅ Deployment successful!"
+          echo "Backend: $BACKEND_URL"
+          echo "Frontend: $FRONTEND_URL"
+          echo "Commit: ${{ github.sha }}"
+
