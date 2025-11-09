@@ -56,6 +56,8 @@ def create_app():
     app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME') or os.environ.get('SMTP_USERNAME', '')
     app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD') or os.environ.get('SMTP_PASSWORD', '')
     app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER') or os.environ.get('SMTP_FROM_EMAIL', 'noreply@workhub.com')
+    # Set timeout to prevent long delays (10 seconds)
+    app.config['MAIL_TIMEOUT'] = 10
     
     # Also set SMTP_* for email_service compatibility
     app.config['SMTP_SERVER'] = app.config['MAIL_SERVER']

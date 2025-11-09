@@ -5,6 +5,7 @@ Generates and sends 6-digit verification codes
 
 import random
 import string
+import threading
 from datetime import datetime, timedelta, timezone
 from flask_mail import Message
 from models import User, db
@@ -42,26 +43,40 @@ class VerificationService:
         user.verification_code_expires = expiry
         db.session.commit()
         
-        # Try to send email
-        email_sent = False
-        if mail:
-            try:
-                email_sent = VerificationService.send_verification_email(user.email, user.name, code, mail)
-                if email_sent:
-                    print(f"✓ Verification email sent successfully to {user.email}")
-                else:
-                    print(f"✗ Failed to send verification email to {user.email}")
-            except Exception as e:
-                print(f"✗ Error sending verification email to {user.email}: {e}")
-                import traceback
-                traceback.print_exc()
-                email_sent = False
-        else:
-            print(f"⚠ Mail instance not available - cannot send email to {user.email}")
+        # Check if email is configured
+        from flask import current_app
+        app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
+        mail_configured = mail and app.config.get('MAIL_USERNAME') and app.config.get('MAIL_PASSWORD')
         
-        # Log the code for development (when email fails)
+        # Try to send email in background thread to avoid blocking
+        email_sent = False
+        if mail_configured:
+            # Send email in background thread to avoid blocking the API response
+            def send_email_async():
+                try:
+                    result = VerificationService.send_verification_email(user.email, user.name, code, mail)
+                    if result:
+                        print(f"✓ Verification email sent successfully to {user.email}")
+                    else:
+                        print(f"✗ Failed to send verification email to {user.email}")
+                except Exception as e:
+                    print(f"✗ Error sending verification email to {user.email}: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # Start email sending in background thread
+            thread = threading.Thread(target=send_email_async, daemon=True)
+            thread.start()
+            
+            # Assume email will be sent (optimistic) - actual result handled in background
+            # This prevents blocking the API response
+            email_sent = True
+        else:
+            print(f"⚠ Mail not configured - cannot send email to {user.email}")
+        
+        # Log the code for development (when email is not configured)
         # SECURITY: Code is ONLY logged server-side, NEVER returned to client
-        if not email_sent:
+        if not mail_configured:
             print(f"\n{'='*60}")
             print(f"DEVELOPMENT MODE: Email not configured")
             print(f"Verification code for {user.email}: {code}")
@@ -134,9 +149,17 @@ class VerificationService:
         )
         
         try:
-            mail.send(msg)
-            print(f"✓ Verification code email sent to {email}")
-            return True
+            # Set a timeout for email sending to prevent long delays
+            import socket
+            original_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(10)  # 10 second timeout
+            
+            try:
+                mail.send(msg)
+                print(f"✓ Verification code email sent to {email}")
+                return True
+            finally:
+                socket.setdefaulttimeout(original_timeout)
         except Exception as e:
             print(f"✗ Error sending verification email to {email}: {e}")
             import traceback

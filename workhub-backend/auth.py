@@ -430,7 +430,7 @@ def signup():
         
         # If email wasn't sent (dev mode), update message but don't expose code
         if not verification_result.get('email_sent'):
-            response_data['message'] = "Signup successful! Check server console for verification code (email not configured)."
+            response_data['message'] = "Signup successful! Verification code has been generated. Please check server logs for the code (email not configured)."
         
         return jsonify(response_data), 201
         
@@ -466,47 +466,65 @@ def verify_email():
     success, message = verification_service.verify_code(user, code)
     
     if success:
-        # After successful verification, notify user that admin approval is required
+        # After successful verification, notify user that admin approval is required (in background)
         try:
             from flask import current_app
+            import threading
             mail = current_app.extensions.get('mail')
             if mail:
-                from flask_mail import Message
-                msg = Message(
-                    subject="Email Verified - Pending Admin Approval",
-                    recipients=[user.email],
-                    html=f"""
-                    <html>
-                      <body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">
-                        <div style=\"max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;\">
-                          <h2 style=\"color: #4CAF50;\">Thanks, {user.name}! Your email is verified.</h2>
-                          <p>Your account is now <strong>pending admin approval</strong>. You will receive an email once an administrator approves your access.</p>
-                          <p style=\"color:#666;font-size:14px;\">You can close this window. Try signing in after you receive the approval email.</p>
-                          <hr style=\"border:none;border-top:1px solid #eee;margin:30px 0;\">
-                          <p style=\"color:#999;font-size:12px;text-align:center;\">WorkHub Task Management System</p>
-                        </div>
-                      </body>
-                    </html>
-                    """,
-                    body=f"""
-                    Thanks, {user.name}! Your email is verified.
-                    
-                    Your account is now pending admin approval. You will receive an email once an administrator approves your access.
-                    
-                    WorkHub Task Management System
-                    """
-                )
-                mail.send(msg)
+                def send_user_email_async():
+                    try:
+                        from flask_mail import Message
+                        msg = Message(
+                            subject="Email Verified - Pending Admin Approval",
+                            recipients=[user.email],
+                            html=f"""
+                            <html>
+                              <body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">
+                                <div style=\"max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;\">
+                                  <h2 style=\"color: #4CAF50;\">Thanks, {user.name}! Your email is verified.</h2>
+                                  <p>Your account is now <strong>pending admin approval</strong>. You will receive an email once an administrator approves your access.</p>
+                                  <p style=\"color:#666;font-size:14px;\">You can close this window. Try signing in after you receive the approval email.</p>
+                                  <hr style=\"border:none;border-top:1px solid #eee;margin:30px 0;\">
+                                  <p style=\"color:#999;font-size:12px;text-align:center;\">WorkHub Task Management System</p>
+                                </div>
+                              </body>
+                            </html>
+                            """,
+                            body=f"""
+                            Thanks, {user.name}! Your email is verified.
+                            
+                            Your account is now pending admin approval. You will receive an email once an administrator approves your access.
+                            
+                            WorkHub Task Management System
+                            """
+                        )
+                        mail.send(msg)
+                    except Exception as e:
+                        print(f"Error sending user notification email: {e}")
+                
+                # Send in background thread
+                thread = threading.Thread(target=send_user_email_async, daemon=True)
+                thread.start()
         except Exception:
             # Non-fatal: continue even if email fails
             pass
         
-        # NOW notify admins/superadmins about the new signup (only after email verification)
+        # NOW notify admins/superadmins about the new signup (only after email verification) - in background
         try:
             from flask import current_app
+            import threading
             mail = current_app.extensions.get('mail')
             if mail:
-                verification_service.send_admin_notification(user, mail)
+                def send_admin_notification_async():
+                    try:
+                        verification_service.send_admin_notification(user, mail)
+                    except Exception as e:
+                        print(f"Failed to send admin notification: {e}")
+                
+                # Send in background thread
+                thread = threading.Thread(target=send_admin_notification_async, daemon=True)
+                thread.start()
         except Exception as e:
             print(f"Failed to send admin notification: {e}")
             # Non-fatal: continue even if admin notification fails
@@ -555,7 +573,7 @@ def resend_verification():
     
     # If email wasn't sent (dev mode), update message but don't expose code
     if not result.get('email_sent'):
-        response_data['message'] = "Verification code generated - check server console (email not configured)"
+        response_data['message'] = "Verification code generated. Please check server logs for the code (email not configured)."
     
     return jsonify(response_data), 200
 

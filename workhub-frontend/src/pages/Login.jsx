@@ -236,7 +236,12 @@ const Login = () => {
       setSignupUserId(response.data.user_id);
       
       // SECURITY: Verification code is NEVER in response - only sent via email
-      setSuccess(response.data.message);
+      // Show appropriate message based on email_sent status
+      if (response.data.email_sent) {
+        setSuccess("Signup successful! Please check your email for the verification code.");
+      } else {
+        setSuccess("Signup successful! Verification code has been generated. Please check server logs for the code (email not configured).");
+      }
       
       setMode('verify');
     } catch (err) {
@@ -261,9 +266,9 @@ const Login = () => {
 
     try {
       const response = await authAPI.verifyEmail(email, verificationCode);
-      setSuccess(response.data.message + ' Your account is pending admin approval. You will receive an email when approved.');
+      setSuccess('Email verified successfully! Your account is pending admin approval. You will receive an email when approved.');
       
-      // Clear form and switch to login after a longer delay so the user can read the message
+      // Clear form and switch to login after a delay so the user can read the message
       setTimeout(() => {
         setMode('login');
         setName('');
@@ -274,7 +279,7 @@ const Login = () => {
         setErrors({});
         setWarnings({});
         setSuccess('');
-      }, 8000);
+      }, 5000);
     } catch (err) {
       setError(err.response?.data?.error || 'Verification failed. Please try again.');
     } finally {
@@ -291,7 +296,12 @@ const Login = () => {
       const response = await authAPI.resendVerification(email);
       
       // SECURITY: Verification code is NEVER in response - only sent via email
-      setSuccess(response.data.message);
+      // Show appropriate message based on email_sent status
+      if (response.data.email_sent) {
+        setSuccess("Verification code sent to your email!");
+      } else {
+        setSuccess("Verification code generated. Please check server logs for the code (email not configured).");
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to resend code. Please try again.');
     } finally {
