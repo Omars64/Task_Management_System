@@ -514,7 +514,10 @@ const Chat = () => {
 
           <div className="sidebar-section">
             <h3>All Users</h3>
-            {users.map(u => {
+            {users.length === 0 ? (
+              <p className="empty-state-text">No users available</p>
+            ) : (
+              users.map(u => {
               // Find conversation where current user and this user are participants
               const existingConv = conversations.find(c => {
                 // Check if other_user matches (this is how the API returns it)
@@ -585,7 +588,8 @@ const Chat = () => {
                   })()}
                 </div>
               );
-            })}
+            })
+            )}
           </div>
         </div>
 
