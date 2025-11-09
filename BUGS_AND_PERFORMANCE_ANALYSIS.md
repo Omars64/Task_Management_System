@@ -97,23 +97,42 @@ tasks = Task.query.options(joinedload(Task.assignee)).filter_by(project_id=proje
 members = ProjectMember.query.options(joinedload(ProjectMember.user)).filter_by(project_id=project.id).all()
 ```
 
-### 6. **Inefficient Message Sorting** (workhub-backend/models.py:577)
+### 6. **N+1 Query Problem in get_conversations()** (workhub-backend/chat.py:89)
+**Severity:** HIGH  
+**Issue:** When calling `conv.to_dict()`, it accesses `self.messages` which triggers lazy loading for each conversation
+```python
+conversations = ChatConversation.query.filter(...).all()
+return jsonify([conv.to_dict(current_user.id) for conv in conversations])  # N+1: each to_dict() loads messages
+```
+**Impact:** For 10 conversations, this triggers 10+ additional queries  
+**Fix:** Use eager loading:
+```python
+from sqlalchemy.orm import joinedload
+
+conversations = ChatConversation.query.options(
+    joinedload(ChatConversation.messages),
+    joinedload(ChatConversation.user1),
+    joinedload(ChatConversation.user2)
+).filter(...).all()
+```
+
+### 7. **Inefficient Message Sorting** (workhub-backend/models.py:577)
 **Severity:** MEDIUM  
 **Issue:** Sorting messages in Python instead of database
 ```python
 for msg in sorted(self.messages, key=lambda m: m.created_at, reverse=True):
 ```
 **Impact:** Loading all messages into memory, then sorting  
-**Fix:** Use database ordering:
+**Note:** The relationship already has `order_by='ChatMessage.created_at'`, but sorting in Python overrides it  
+**Fix:** Remove Python sorting, rely on relationship ordering:
 ```python
-# In ChatConversation model, change relationship:
-messages = db.relationship('ChatMessage', ..., order_by='ChatMessage.created_at.desc()')
-
-# Or in query:
-messages = ChatMessage.query.filter_by(conversation_id=self.id).order_by(ChatMessage.created_at.desc()).all()
+# Relationship already has: order_by='ChatMessage.created_at'
+# Just iterate directly:
+for msg in self.messages:  # Already sorted by DB
+    # ...
 ```
 
-### 7. **Excessive Polling** (workhub-frontend/src/pages/Chat.jsx:44-49)
+### 8. **Excessive Polling** (workhub-frontend/src/pages/Chat.jsx:44-49)
 **Severity:** MEDIUM  
 **Issue:** Polling every 3 seconds for messages and conversations
 ```javascript
@@ -127,7 +146,7 @@ messageIntervalRef.current = setInterval(() => {
 **Impact:** High server load, unnecessary bandwidth, battery drain  
 **Fix:** Use WebSockets or increase interval to 10-15 seconds, or use long polling
 
-### 8. **Multiple Polling Intervals** (workhub-frontend/src/components/Layout.jsx:22-23)
+### 9. **Multiple Polling Intervals** (workhub-frontend/src/components/Layout.jsx:22-23)
 **Severity:** LOW  
 **Issue:** Multiple intervals running simultaneously
 ```javascript
@@ -137,13 +156,13 @@ const chatInterval = setInterval(fetchChatUnreadCount, 5000);  // 5s
 **Impact:** Multiple concurrent API calls  
 **Fix:** Combine into single interval or use WebSockets
 
-### 9. **No Debouncing on Search** (workhub-frontend/src/pages/Tasks.jsx)
+### 10. **No Debouncing on Search** (workhub-frontend/src/pages/Tasks.jsx)
 **Severity:** LOW  
 **Issue:** Search input triggers API calls on every keystroke
 **Impact:** Excessive API calls during typing  
 **Fix:** Add debouncing (300-500ms)
 
-### 10. **Inefficient Task Status Counting** (workhub-backend/projects.py:116-121)
+### 11. **Inefficient Task Status Counting** (workhub-backend/projects.py:116-121)
 **Severity:** LOW  
 **Issue:** Filtering tasks in Python instead of database
 ```python
@@ -168,7 +187,7 @@ task_counts = db.session.query(
 
 ## 🐛 Logic Bugs
 
-### 11. **Potential Memory Leak in Chat** (workhub-frontend/src/pages/Chat.jsx:40-56)
+### 12. **Potential Memory Leak in Chat** (workhub-frontend/src/pages/Chat.jsx:40-56)
 **Severity:** MEDIUM  
 **Issue:** If `fetchData` or `fetchMessages` are async and component unmounts, promises may continue
 ```javascript
@@ -179,7 +198,7 @@ useEffect(() => {
 ```
 **Fix:** Add abort controller or cleanup flag
 
-### 12. **Missing Error Handling in Chat** (workhub-frontend/src/pages/Chat.jsx:66-100)
+### 13. **Missing Error Handling in Chat** (workhub-frontend/src/pages/Chat.jsx:66-100)
 **Severity:** LOW  
 **Issue:** `fetchData` catches errors but doesn't handle partial failures
 ```javascript
@@ -188,7 +207,7 @@ const [usersRes, conversationsRes] = await Promise.all([...]);
 ```
 **Fix:** Use `Promise.allSettled` or separate try-catch blocks
 
-### 13. **Stale Closure in Chat Polling** (workhub-frontend/src/pages/Chat.jsx:44-49)
+### 14. **Stale Closure in Chat Polling** (workhub-frontend/src/pages/Chat.jsx:44-49)
 **Severity:** MEDIUM  
 **Issue:** Interval callback captures old `selectedConversation` value
 ```javascript
@@ -200,7 +219,7 @@ messageIntervalRef.current = setInterval(() => {
 ```
 **Fix:** Use ref for selectedConversation or clear interval on change
 
-### 14. **Double Query in get_task()** (workhub-backend/tasks.py:228-245)
+### 15. **Double Query in get_task()** (workhub-backend/tasks.py:228-245)
 **Severity:** LOW  
 **Issue:** Querying task twice (once for permission check, once with eager loading)
 ```python
@@ -214,7 +233,7 @@ task = Task.query.options(...).get(task_id)  # Second query
 
 ## 🔒 Security Concerns
 
-### 15. **SQL Injection Risk (Low)** (workhub-backend/tasks.py:172-177)
+### 16. **SQL Injection Risk (Low)** (workhub-backend/tasks.py:172-177)
 **Severity:** LOW  
 **Issue:** Using `.contains()` which is safe, but should verify
 ```python
@@ -227,7 +246,7 @@ query = query.filter(
 ```
 **Status:** Actually safe, but worth noting
 
-### 16. **Missing Input Validation** (Multiple files)
+### 17. **Missing Input Validation** (Multiple files)
 **Severity:** MEDIUM  
 **Issue:** Some endpoints don't validate input length/size
 **Fix:** Add validation decorators or use validators
@@ -236,7 +255,7 @@ query = query.filter(
 
 ## 📊 Database Performance
 
-### 17. **Missing Indexes** (workhub-backend/tasks.py:75-101)
+### 18. **Missing Indexes** (workhub-backend/tasks.py:75-101)
 **Severity:** MEDIUM  
 **Issue:** Indexes are created, but may be missing for:
 - `notifications.user_id`
@@ -249,7 +268,7 @@ query = query.filter(
 
 **Fix:** Add indexes for frequently queried columns
 
-### 18. **Inefficient Unread Count** (workhub-backend/models.py:615)
+### 19. **Inefficient Unread Count** (workhub-backend/models.py:615)
 **Severity:** LOW  
 **Issue:** Counting unread messages in Python
 ```python
@@ -269,12 +288,12 @@ unread_count = ChatMessage.query.filter_by(
 
 ## 🧹 Code Quality
 
-### 19. **Inconsistent Error Handling**
+### 20. **Inconsistent Error Handling**
 **Severity:** LOW  
 **Issue:** Some endpoints return generic errors, others return detailed errors
 **Fix:** Standardize error response format
 
-### 20. **Missing Transaction Management**
+### 21. **Missing Transaction Management**
 **Severity:** MEDIUM  
 **Issue:** Some operations that should be atomic aren't wrapped in transactions
 **Fix:** Use `db.session.begin()` for multi-step operations
@@ -286,23 +305,24 @@ unread_count = ChatMessage.query.filter_by(
 ### Immediate (Critical):
 1. Fix N+1 queries in `get_tasks()` (#4)
 2. Fix N+1 queries in `get_project()` (#5)
-3. Fix useEffect dependencies in Chat (#2)
+3. Fix N+1 queries in `get_conversations()` (#6)
+4. Fix useEffect dependencies in Chat (#2)
 
 ### High Priority:
-4. Reduce chat polling frequency (#7)
-5. Fix race condition in chat polling (#3)
-6. Add missing database indexes (#17)
+5. Reduce chat polling frequency (#8)
+6. Fix race condition in chat polling (#3)
+7. Add missing database indexes (#18)
 
 ### Medium Priority:
-7. Fix inefficient message sorting (#6)
-8. Add debouncing to search (#9)
-9. Fix double query in get_task() (#14)
-10. Add transaction management (#20)
+8. Fix inefficient message sorting (#7)
+9. Add debouncing to search (#10)
+10. Fix double query in get_task() (#15)
+11. Add transaction management (#21)
 
 ### Low Priority:
-11. Optimize task status counting (#10)
-12. Fix memory leaks (#11)
-13. Improve error handling (#12, #19)
+12. Optimize task status counting (#11)
+13. Fix memory leaks (#12)
+14. Improve error handling (#13, #20)
 
 ---
 
