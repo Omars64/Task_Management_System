@@ -71,14 +71,19 @@ const Chat = () => {
         chatAPI.getConversations()
       ]);
       
-      setUsers(usersRes.data || []);
+      const usersList = usersRes.data || [];
+      console.log('Fetched users for chat:', usersList.length, usersList);
+      setUsers(usersList);
+      
       const convs = conversationsRes.data || [];
       setConversations(convs);
       // Only show pending requests where current user is NOT the requester (they can't accept their own requests)
       setPendingRequests(convs.filter(c => c.status === 'pending' && c.requested_by !== user.id));
     } catch (error) {
       console.error('Failed to fetch chat data:', error);
+      console.error('Error details:', error.response?.data || error.message);
       showError('Failed to load chat data. Please refresh the page.', 'Chat Error');
+      setUsers([]); // Ensure users is set to empty array on error
     } finally {
       setLoading(false);
     }
