@@ -41,13 +41,19 @@ def _get_current_user():
 @chat_bp.route('/users', methods=['GET'])
 @jwt_required()
 def get_users():
-    """Get all users for chat (excluding current user)"""
+    """Get all approved and verified users for chat (excluding current user)"""
     try:
         current_user = _get_current_user()
         if not current_user:
             return jsonify({'error': 'Unauthorized'}), 401
         
-        users = User.query.filter(User.id != current_user.id).all()
+        # Only return users who are approved and have verified their email
+        users = User.query.filter(
+            User.id != current_user.id,
+            User.signup_status == 'approved',
+            User.email_verified == True
+        ).all()
+        
         return jsonify([{
             'id': u.id,
             'name': u.name,
@@ -99,6 +105,13 @@ def request_chat():
         other_user = User.query.get(other_user_id)
         if not other_user:
             return jsonify({'error': 'User not found'}), 404
+        
+        # Validate that the user is approved and has verified their email
+        if other_user.signup_status != 'approved':
+            return jsonify({'error': 'Cannot chat with this user. User account is not approved.'}), 400
+        
+        if not other_user.email_verified:
+            return jsonify({'error': 'Cannot chat with this user. User email is not verified.'}), 400
         
         # Check if conversation already exists
         existing = ChatConversation.query.filter(
