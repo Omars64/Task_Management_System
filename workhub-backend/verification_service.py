@@ -197,14 +197,18 @@ class VerificationService:
     @staticmethod
     def send_admin_notification(user_signup, mail):
         """
-        Send notification to all admins about new signup request
+        Send notification to all admins and super_admins about new signup request
+        Only called AFTER email verification is complete
         
         Args:
-            user_signup: User who signed up (pending approval)
+            user_signup: User who signed up (pending approval, email verified)
             mail: Flask-Mail instance
         """
-        # Get all admin users
-        admins = User.query.filter_by(role='admin', signup_status='approved').all()
+        # Get all admin and super_admin users
+        admins = User.query.filter(
+            User.role.in_(['admin', 'super_admin']),
+            User.signup_status == 'approved'
+        ).all()
         
         if not admins:
             print("No admin users found to notify")

@@ -415,12 +415,8 @@ def signup():
         # Always call create_and_send_code (it handles None mail gracefully)
         verification_result = verification_service.create_and_send_code(user, mail)
         
-        # Try to notify admins about new signup
-        if mail:
-            try:
-                verification_service.send_admin_notification(user, mail)
-            except Exception as e:
-                print(f"Failed to send admin notification: {e}")
+        # NOTE: Admin notification is sent AFTER email verification (in verify-email endpoint)
+        # This ensures admins only receive requests for users who have verified their email
         
         # SECURITY: Never include verification code in API response
         # Code is sent via email only (or logged server-side in development)
@@ -504,6 +500,17 @@ def verify_email():
         except Exception:
             # Non-fatal: continue even if email fails
             pass
+        
+        # NOW notify admins/superadmins about the new signup (only after email verification)
+        try:
+            from flask import current_app
+            mail = current_app.extensions.get('mail')
+            if mail:
+                verification_service.send_admin_notification(user, mail)
+        except Exception as e:
+            print(f"Failed to send admin notification: {e}")
+            # Non-fatal: continue even if admin notification fails
+        
         return jsonify({"message": message, "verified": True}), 200
     else:
         return jsonify({"error": message, "verified": False}), 400
