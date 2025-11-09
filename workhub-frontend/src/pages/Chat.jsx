@@ -234,6 +234,12 @@ const Chat = () => {
   };
 
   const handleSelectConversation = (conversation) => {
+    // Allow selecting pending conversations so User B can see and accept/reject requests
+    if (conversation.status === 'pending') {
+      setSelectedConversation(conversation);
+      // Don't fetch messages for pending conversations - they don't have messages yet
+      return;
+    }
     if (conversation.status !== 'accepted') {
       showError('Conversation not accepted yet', 'Error');
       return;
@@ -532,7 +538,7 @@ const Chat = () => {
               <p className="empty-state-text">No conversations yet</p>
             ) : (
               conversations
-                .filter(c => c.status === 'accepted')
+                .filter(c => c.status === 'accepted' || (c.status === 'pending' && c.requested_by !== user.id))
                 .map(conv => (
                   <div
                     key={conv.id}
@@ -543,9 +549,16 @@ const Chat = () => {
                       {conv.other_user.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="conversation-info">
-                      <div className="conversation-name">{conv.other_user.name}</div>
+                      <div className="conversation-name">
+                        {conv.other_user.name}
+                        {conv.status === 'pending' && (
+                          <span className="status-badge pending" style={{ marginLeft: '8px', fontSize: '10px' }}>Pending Request</span>
+                        )}
+                      </div>
                       <div className="conversation-preview">
-                        {conv.last_message || (conv.status === 'accepted' ? 'No messages yet' : conv.status)}
+                        {conv.status === 'pending' 
+                          ? 'Chat request - Click to accept/reject'
+                          : (conv.last_message || 'No messages yet')}
                       </div>
                     </div>
                     {conv.unread_count > 0 && (
@@ -579,11 +592,10 @@ const Chat = () => {
                   {(() => {
                     // Show add button if:
                     // 1. No conversation exists, OR
-                    // 2. Conversation was rejected (so user can retry), OR
-                    // 3. Conversation is pending and current user is the requester (waiting for response)
+                    // 2. Conversation was rejected (so user can retry)
+                    // NOTE: Do NOT show add button when pending and user is requester - show pending badge instead
                     const showAddButton = !existingConv || 
-                      (existingConv.status === 'rejected') ||
-                      (existingConv.status === 'pending' && existingConv.requested_by === user.id);
+                      (existingConv.status === 'rejected');
                     
                     // Show pending badge if conversation is pending and user is the requester
                     const showPendingBadge = existingConv && 
@@ -640,19 +652,62 @@ const Chat = () => {
         <div className="chat-main">
           {selectedConversation ? (
             <>
-              <div className="chat-header-bar">
-                <div className="chat-user-info">
-                  <div className="chat-avatar">
-                    {selectedConversation.other_user.name.charAt(0).toUpperCase()}
+              {selectedConversation.status === 'pending' ? (
+                // Show accept/reject UI for pending conversations
+                <div className="pending-conversation-view">
+                  <div className="chat-header-bar">
+                    <div className="chat-user-info">
+                      <div className="chat-avatar">
+                        {selectedConversation.other_user.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="chat-user-name">{selectedConversation.other_user.name}</div>
+                        <div className="chat-user-status">Pending Chat Request</div>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="chat-user-name">{selectedConversation.other_user.name}</div>
-                    <div className="chat-user-status">{otherTyping ? 'Typing…' : 'Online'}</div>
+                  <div className="pending-request-details">
+                    {selectedConversation.requested_by === user.id ? (
+                      <div className="pending-message">
+                        <p>You sent a chat request to <strong>{selectedConversation.other_user.name}</strong>.</p>
+                        <p className="pending-status-text">Waiting for them to accept...</p>
+                      </div>
+                    ) : (
+                      <div className="pending-message">
+                        <p><strong>{selectedConversation.other_user.name}</strong> wants to start a chat with you.</p>
+                        <div className="pending-actions">
+                          <button 
+                            className="btn btn-primary" 
+                            onClick={() => handleAcceptRequest(selectedConversation.id)}
+                          >
+                            Accept
+                          </button>
+                          <button 
+                            className="btn btn-outline" 
+                            onClick={() => handleRejectRequest(selectedConversation.id)}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className="chat-header-bar">
+                    <div className="chat-user-info">
+                      <div className="chat-avatar">
+                        {selectedConversation.other_user.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="chat-user-name">{selectedConversation.other_user.name}</div>
+                        <div className="chat-user-status">{otherTyping ? 'Typing…' : 'Online'}</div>
+                      </div>
+                    </div>
+                  </div>
 
-              <div className="messages-container" ref={messagesContainerRef}>
+                  <div className="messages-container" ref={messagesContainerRef}>
                 {messages.map(msg => (
                   <div
                     key={msg.id}
@@ -958,6 +1013,8 @@ const Chat = () => {
                   );
                 })()}
               </form>
+                </>
+              )}
             </>
           ) : (
             <div className="chat-placeholder">
