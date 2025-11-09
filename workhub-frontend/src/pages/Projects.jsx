@@ -280,7 +280,7 @@ function ProjectCard({ project, onChanged, user, isAdmin, expanded, onToggle, sh
                 </li>
               ))}
             </ul>
-            {(isAdmin() || (user?.role === 'manager')) && (
+            {isAdmin() && (
               <button onClick={() => setShowAddMember(true)} className="btn btn-primary" style={{ marginTop:8, background:'#68939d', borderColor:'#68939d' }}>
                 Assign Member
               </button>
