@@ -66,14 +66,14 @@ def create_app():
     
     # Initialize database schema on first request (idempotent - safe to run multiple times)
     # This ensures all tables exist when the app starts
-    _db_init_lock = False
+    # Use app-level attribute to track initialization status
+    app._db_initialized = False
     
     @app.before_request
     def _initialize_database():
-        global _db_init_lock
         # Only run once per worker process
-        if not _db_init_lock:
-            _db_init_lock = True
+        if not getattr(app, '_db_initialized', False):
+            app._db_initialized = True
             try:
                 with app.app_context():
                     # Try to import and use the comprehensive initialization script
