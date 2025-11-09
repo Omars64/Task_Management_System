@@ -41,10 +41,6 @@ def create_app():
         allowed_origins = [origin.strip() for origin in allowed_origins.split(',')]
     CORS(app, resources={r"/*": {"origins": allowed_origins}})
     
-    # Initialize Flask-Mail for email verification codes
-    mail = Mail(app)
-    app.extensions['mail'] = mail
-    
     # Configure JWT settings for session timeout
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30)  # 30 minute session timeout
     
@@ -53,16 +49,30 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload size
     
     # Configure email service (support both SMTP_* and MAIL_* envs)
-    app.config['SMTP_SERVER'] = os.environ.get('SMTP_SERVER') or os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
-    app.config['SMTP_PORT'] = int((os.environ.get('SMTP_PORT') or os.environ.get('MAIL_PORT') or 587))
-    app.config['SMTP_USERNAME'] = os.environ.get('SMTP_USERNAME') or os.environ.get('MAIL_USERNAME', '')
-    app.config['SMTP_PASSWORD'] = os.environ.get('SMTP_PASSWORD') or os.environ.get('MAIL_PASSWORD', '')
-    app.config['SMTP_FROM_EMAIL'] = os.environ.get('SMTP_FROM_EMAIL') or os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@workhub.com')
+    # Read from environment variables (GCP Secret Manager or Cloud Run env vars)
+    app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER') or os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
+    app.config['MAIL_PORT'] = int((os.environ.get('MAIL_PORT') or os.environ.get('SMTP_PORT') or 587))
+    app.config['MAIL_USE_TLS'] = str(os.environ.get('MAIL_USE_TLS', 'True')).lower() == 'true'
+    app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME') or os.environ.get('SMTP_USERNAME', '')
+    app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD') or os.environ.get('SMTP_PASSWORD', '')
+    app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER') or os.environ.get('SMTP_FROM_EMAIL', 'noreply@workhub.com')
+    
+    # Also set SMTP_* for email_service compatibility
+    app.config['SMTP_SERVER'] = app.config['MAIL_SERVER']
+    app.config['SMTP_PORT'] = app.config['MAIL_PORT']
+    app.config['SMTP_USERNAME'] = app.config['MAIL_USERNAME']
+    app.config['SMTP_PASSWORD'] = app.config['MAIL_PASSWORD']
+    app.config['SMTP_FROM_EMAIL'] = app.config['MAIL_DEFAULT_SENDER']
     app.config['SMTP_FROM_NAME'] = os.environ.get('SMTP_FROM_NAME', 'WorkHub Task Management')
+    
     # Enable emails automatically if credentials are present, unless explicitly disabled
     env_enabled = os.environ.get('EMAIL_NOTIFICATIONS_ENABLED')
-    app.config['EMAIL_NOTIFICATIONS_ENABLED'] = (env_enabled.lower() == 'true') if isinstance(env_enabled, str) else bool(app.config['SMTP_USERNAME'])
+    app.config['EMAIL_NOTIFICATIONS_ENABLED'] = (env_enabled.lower() == 'true') if isinstance(env_enabled, str) else bool(app.config['MAIL_USERNAME'])
     app.config['FRONTEND_URL'] = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+    
+    # Initialize Flask-Mail for email verification codes (AFTER config is set)
+    mail = Mail(app)
+    app.extensions['mail'] = mail
     
     # Initialize email service
     email_service.init_app(app)
