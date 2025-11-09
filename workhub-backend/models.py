@@ -645,11 +645,26 @@ class MessageReaction(db.Model):
     )
     
     def to_dict(self):
+        # Ensure emoji is properly encoded as UTF-8 string
+        emoji_value = self.emoji
+        if emoji_value:
+            # If emoji is bytes, decode it; if it's already a string, ensure it's valid UTF-8
+            if isinstance(emoji_value, bytes):
+                try:
+                    emoji_value = emoji_value.decode('utf-8')
+                except (UnicodeDecodeError, AttributeError):
+                    emoji_value = str(emoji_value)
+            # Ensure it's a valid string and not corrupted
+            if not isinstance(emoji_value, str):
+                emoji_value = str(emoji_value)
+            # Remove any null bytes or invalid characters
+            emoji_value = emoji_value.replace('\0', '').strip()
+        
         return {
             'id': self.id,
             'message_id': self.message_id,
             'user_id': self.user_id,
             'user_name': self.user.name if self.user else None,
-            'emoji': self.emoji,
+            'emoji': emoji_value,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

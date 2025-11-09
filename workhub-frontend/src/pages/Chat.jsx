@@ -411,13 +411,37 @@ const Chat = () => {
     return <FiCheck className="icon-single-gray" />;
   };
 
+  // Helper function to normalize and validate emoji
+  const normalizeEmoji = (emoji) => {
+    if (!emoji) return '';
+    // Remove any null bytes or invalid characters
+    const cleaned = emoji.replace(/\0/g, '').trim();
+    // Ensure it's a valid Unicode string
+    try {
+      // If emoji is corrupted, try to decode it
+      if (cleaned.includes('??') || cleaned.length === 0) {
+        return cleaned; // Return as-is if already corrupted
+      }
+      return cleaned;
+    } catch (e) {
+      return cleaned;
+    }
+  };
+
   const groupReactions = (reactions) => {
     const grouped = {};
     reactions.forEach(r => {
-      if (!grouped[r.emoji]) {
-        grouped[r.emoji] = [];
+      if (!r || !r.emoji) return;
+      const normalizedEmoji = normalizeEmoji(r.emoji);
+      if (!normalizedEmoji || normalizedEmoji.includes('??')) {
+        // Skip corrupted emojis
+        console.warn('Skipping corrupted emoji reaction:', r.emoji);
+        return;
       }
-      grouped[r.emoji].push(r);
+      if (!grouped[normalizedEmoji]) {
+        grouped[normalizedEmoji] = [];
+      }
+      grouped[normalizedEmoji].push(r);
     });
     return grouped;
   };
@@ -714,7 +738,9 @@ const Chat = () => {
                                 }}
                                 title={reactionList.map(r => r.user_name).join(', ')}
                               >
-                                <span className="reaction-emoji">{emoji}</span>
+                                <span className="reaction-emoji" role="img" aria-label="emoji">
+                                  {normalizeEmoji(emoji) || '❓'}
+                                </span>
                                 <span className="reaction-count">{reactionList.length}</span>
                               </button>
                             );

@@ -27,6 +27,9 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
+    # Ensure JSON responses use UTF-8 encoding
+    app.config['JSON_AS_ASCII'] = False  # Allow non-ASCII characters (emojis) in JSON
+    
     # Initialize extensions
     db.init_app(app)
     bcrypt.init_app(app)
