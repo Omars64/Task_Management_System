@@ -22,8 +22,17 @@ class Config:
     # Note: pymssql doesn't support Unix sockets, so we always use TCP/IP
     explicit_db_host = os.environ.get('DB_HOST')
     if explicit_db_host:
-        # Use explicit DB_HOST (e.g., private IP for Cloud SQL)
-        DB_HOST = explicit_db_host
+        # Safety check: If public IP is detected, automatically use private IP
+        # Cloud SQL Private IP for workhub-db: 10.119.176.3
+        # Public IP (should not be used): 34.31.203.11
+        if explicit_db_host == '34.31.203.11':
+            # Automatically switch to private IP for Cloud SQL
+            DB_HOST = '10.119.176.3'
+            import warnings
+            warnings.warn("DB_HOST was set to public IP (34.31.203.11). Automatically using private IP (10.119.176.3) for secure connection.")
+        else:
+            # Use explicit DB_HOST (e.g., private IP for Cloud SQL)
+            DB_HOST = explicit_db_host
         DB_PORT = os.environ.get('DB_PORT', '1433')
     elif CLOUD_SQL_CONNECTION_NAME:
         # Fallback: if CLOUD_SQL_CONNECTION_NAME is set but DB_HOST is not,
