@@ -86,18 +86,17 @@ const Chat = () => {
       setLoading(true);
       console.log('[Chat] Fetching users and conversations...');
       
-      // Use the same users API as Users window to get all users
+      // Use chat API to get users - this endpoint is accessible to all roles
+      // and returns all users (no permission restrictions)
       // Use Promise.allSettled to handle partial failures gracefully
       const [usersResult, conversationsResult] = await Promise.allSettled([
-        usersAPI.getAll(), // Use same API as Users window
+        chatAPI.getUsers(), // Chat-specific endpoint - accessible to all roles
         chatAPI.getConversations()
       ]);
       
-      // Handle users result - exclude current user
+      // Handle users result - chat API already excludes current user
       if (usersResult.status === 'fulfilled') {
-        const allUsers = Array.isArray(usersResult.value?.data) ? usersResult.value.data : [];
-        // Filter out current user
-        const usersList = allUsers.filter(u => u.id !== user.id);
+        const usersList = Array.isArray(usersResult.value?.data) ? usersResult.value.data : [];
         console.log('[Chat] Parsed users list:', usersList.length, usersList);
         if (usersList.length === 0) {
           console.warn('[Chat] No users returned from API.');

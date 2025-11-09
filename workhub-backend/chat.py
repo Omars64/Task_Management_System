@@ -41,13 +41,17 @@ def _get_current_user():
 @chat_bp.route('/users', methods=['GET'])
 @jwt_required()
 def get_users():
-    """Get all users for chat (excluding current user) - allows all users to chat"""
+    """
+    Get all users for chat (excluding current user) - accessible to ALL roles
+    No role-based restrictions - any authenticated user can see all users for chat
+    """
     try:
         current_user = _get_current_user()
         if not current_user:
             return jsonify({'error': 'Unauthorized'}), 401
         
-        # Return ALL users except current user - no restrictions
+        # Return ALL users except current user - no role restrictions
+        # All roles (super_admin, admin, manager, team_lead, developer, viewer) can chat with everyone
         users = User.query.filter(
             User.id != current_user.id
         ).all()
@@ -182,7 +186,10 @@ def get_conversations():
 @chat_bp.route('/conversations/request', methods=['POST'])
 @jwt_required()
 def request_chat():
-    """Request a chat with another user"""
+    """
+    Request a chat with another user - accessible to ALL roles
+    Any authenticated user can initiate chat with any other user
+    """
     try:
         current_user = _get_current_user()
         if not current_user:
@@ -320,7 +327,10 @@ def request_chat():
 @chat_bp.route('/conversations/<int:conversation_id>/accept', methods=['POST'])
 @jwt_required()
 def accept_chat(conversation_id):
-    """Accept a chat request"""
+    """
+    Accept a chat request - accessible to ALL roles
+    Any authenticated user can accept chat requests from any other user
+    """
     try:
         current_user = _get_current_user()
         if not current_user:
