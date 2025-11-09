@@ -42,6 +42,12 @@ const Chat = () => {
     fetchData();
   }, []); // Only run once on mount
 
+  // Use refs to avoid stale closures in interval callbacks
+  const selectedConversationIdRef = useRef(selectedConversation?.id);
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversation?.id;
+  }, [selectedConversation?.id]);
+
   // Poll for new messages - reduced frequency and fixed dependencies
   useEffect(() => {
     // Clear any existing interval first
@@ -51,8 +57,10 @@ const Chat = () => {
     
     // Poll for new messages every 10 seconds (reduced from 3s to reduce server load)
     messageIntervalRef.current = setInterval(() => {
-      if (selectedConversation) {
-        fetchMessages(selectedConversation.id);
+      // Use ref to get current value, avoiding stale closure
+      const currentConvId = selectedConversationIdRef.current;
+      if (currentConvId) {
+        fetchMessages(currentConvId);
       }
       fetchConversations();
     }, 10000); // 10 seconds instead of 3
@@ -63,7 +71,7 @@ const Chat = () => {
         messageIntervalRef.current = null;
       }
     };
-  }, [selectedConversation?.id]); // Only depend on conversation ID, not the whole object
+  }, []); // Empty deps - interval doesn't need to restart on conversation change
 
   // Presence heartbeat
   useEffect(() => {
