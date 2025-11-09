@@ -66,24 +66,34 @@ const Chat = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
+      console.log('[Chat] Fetching users and conversations...');
+      
       const [usersRes, conversationsRes] = await Promise.all([
         chatAPI.getUsers(),
         chatAPI.getConversations()
       ]);
       
-      const usersList = usersRes.data || [];
-      console.log('Fetched users for chat:', usersList.length, usersList);
+      console.log('[Chat] Users response:', usersRes);
+      console.log('[Chat] Conversations response:', conversationsRes);
+      
+      // Handle response - axios wraps in .data
+      const usersList = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.data || []);
+      console.log('[Chat] Parsed users list:', usersList.length, usersList);
       setUsers(usersList);
       
-      const convs = conversationsRes.data || [];
+      const convs = Array.isArray(conversationsRes.data) ? conversationsRes.data : (conversationsRes.data?.data || []);
+      console.log('[Chat] Parsed conversations:', convs.length, convs);
       setConversations(convs);
+      
       // Only show pending requests where current user is NOT the requester (they can't accept their own requests)
       setPendingRequests(convs.filter(c => c.status === 'pending' && c.requested_by !== user.id));
     } catch (error) {
-      console.error('Failed to fetch chat data:', error);
-      console.error('Error details:', error.response?.data || error.message);
+      console.error('[Chat] Failed to fetch chat data:', error);
+      console.error('[Chat] Error response:', error.response);
+      console.error('[Chat] Error details:', error.response?.data || error.message);
       showError('Failed to load chat data. Please refresh the page.', 'Chat Error');
       setUsers([]); // Ensure users is set to empty array on error
+      setConversations([]);
     } finally {
       setLoading(false);
     }

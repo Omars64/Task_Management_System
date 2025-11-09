@@ -53,13 +53,21 @@ def get_users():
             User.signup_status == 'approved'
         ).all()
         
-        return jsonify([{
+        users_list = [{
             'id': u.id,
             'name': u.name,
             'email': u.email,
             'role': u.role
-        } for u in users]), 200
+        } for u in users]
+        
+        # Log for debugging
+        print(f"[Chat API] Returning {len(users_list)} approved users (excluding user {current_user.id})")
+        
+        return jsonify(users_list), 200
     except Exception as e:
+        import traceback
+        print(f"[Chat API] Error in get_users: {str(e)}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
