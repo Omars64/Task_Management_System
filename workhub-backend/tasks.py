@@ -191,6 +191,14 @@ def get_tasks():
         page_size = request.args.get('page_size', type=int)
 
         query = query.order_by(Task.created_at.desc())
+        
+        # Eager load relationships to prevent N+1 queries
+        query = query.options(
+            joinedload(Task.assignee),
+            joinedload(Task.creator),
+            joinedload(Task.project),
+            joinedload(Task.sprint)
+        )
 
         if page and page_size:
             pagination = query.paginate(page=page, per_page=page_size, error_out=False)
@@ -224,8 +232,15 @@ def get_task(task_id):
         if not current_user:
             return jsonify({'error': 'Unauthorized'}), 401
 
-        # Get task without eager loading first to check permissions
-        task = Task.query.get(task_id)
+        # Get task with eager loading for all relationships
+        task = Task.query.options(
+            joinedload(Task.assignee),
+            joinedload(Task.creator),
+            joinedload(Task.project),
+            joinedload(Task.sprint),
+            joinedload(Task.comments),
+            joinedload(Task.time_logs)
+        ).get(task_id)
         
         if not task:
             return jsonify({'error': 'Task not found'}), 404
@@ -233,16 +248,6 @@ def get_task(task_id):
         # Access: users with TASKS_READ or assignee
         if not current_user.has_permission(Permission.TASKS_READ) and task.assigned_to != current_user.id:
             return jsonify({'error': 'Access denied'}), 403
-
-        # Now eager load comments and time_logs
-        try:
-            task = Task.query.options(
-                joinedload(Task.comments),
-                joinedload(Task.time_logs)
-            ).get(task_id)
-        except Exception as e:
-            print(f"Warning: Could not eager load relationships: {e}")
-            task = Task.query.get(task_id)
 
         # Safely build task dictionary with error handling
         try:

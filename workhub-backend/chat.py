@@ -80,8 +80,13 @@ def get_conversations():
         if not current_user:
             return jsonify({'error': 'Unauthorized'}), 401
         
-        # Get conversations where user is either user1 or user2
-        conversations = ChatConversation.query.filter(
+        # Eager load relationships to prevent N+1 queries
+        from sqlalchemy.orm import joinedload
+        conversations = ChatConversation.query.options(
+            joinedload(ChatConversation.user1),
+            joinedload(ChatConversation.user2),
+            joinedload(ChatConversation.messages)
+        ).filter(
             (ChatConversation.user1_id == current_user.id) | 
             (ChatConversation.user2_id == current_user.id)
         ).all()

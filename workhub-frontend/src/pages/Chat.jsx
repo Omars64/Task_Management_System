@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { chatAPI, usersAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { FiSend, FiCheck, FiUserPlus, FiMessageCircle, FiSmile, FiPaperclip, FiMoreVertical, FiX } from 'react-icons/fi';
@@ -37,23 +37,33 @@ const Chat = () => {
   const messagesContainerRef = useRef(null);
   const hasScrolledRef = useRef(false);
 
+  // Fetch initial data
   useEffect(() => {
     fetchData();
+  }, []); // Only run once on mount
+
+  // Poll for new messages - reduced frequency and fixed dependencies
+  useEffect(() => {
+    // Clear any existing interval first
+    if (messageIntervalRef.current) {
+      clearInterval(messageIntervalRef.current);
+    }
     
-    // Poll for new messages every 3 seconds
+    // Poll for new messages every 10 seconds (reduced from 3s to reduce server load)
     messageIntervalRef.current = setInterval(() => {
       if (selectedConversation) {
         fetchMessages(selectedConversation.id);
       }
       fetchConversations();
-    }, 3000);
+    }, 10000); // 10 seconds instead of 3
     
     return () => {
       if (messageIntervalRef.current) {
         clearInterval(messageIntervalRef.current);
+        messageIntervalRef.current = null;
       }
     };
-  }, [selectedConversation]);
+  }, [selectedConversation?.id]); // Only depend on conversation ID, not the whole object
 
   // Presence heartbeat
   useEffect(() => {
@@ -68,35 +78,43 @@ const Chat = () => {
       setLoading(true);
       console.log('[Chat] Fetching users and conversations...');
       
-      const [usersRes, conversationsRes] = await Promise.all([
+      // Use Promise.allSettled to handle partial failures gracefully
+      const [usersResult, conversationsResult] = await Promise.allSettled([
         chatAPI.getUsers(),
         chatAPI.getConversations()
       ]);
       
-      console.log('[Chat] Users response:', usersRes);
-      console.log('[Chat] Conversations response:', conversationsRes);
-      
-      // Handle response - axios wraps in .data, ensure we get the array
-      const usersList = Array.isArray(usersRes?.data) ? usersRes.data : [];
-      console.log('[Chat] Parsed users list:', usersList.length, usersList);
-      if (usersList.length === 0) {
-        console.warn('[Chat] No users returned from API. Check if there are approved users in the database.');
+      // Handle users result
+      if (usersResult.status === 'fulfilled') {
+        const usersList = Array.isArray(usersResult.value?.data) ? usersResult.value.data : [];
+        console.log('[Chat] Parsed users list:', usersList.length, usersList);
+        if (usersList.length === 0) {
+          console.warn('[Chat] No users returned from API. Check if there are approved users in the database.');
+        }
+        setUsers(usersList);
+      } else {
+        console.error('[Chat] Failed to fetch users:', usersResult.reason);
+        setUsers([]);
       }
-      setUsers(usersList);
       
-      const convs = Array.isArray(conversationsRes?.data) ? conversationsRes.data : [];
-      console.log('[Chat] Parsed conversations:', convs.length, convs);
-      setConversations(convs);
-      
-      // Only show pending requests where current user is NOT the requester (they can't accept their own requests)
-      setPendingRequests(convs.filter(c => c.status === 'pending' && c.requested_by !== user.id));
+      // Handle conversations result
+      if (conversationsResult.status === 'fulfilled') {
+        const convs = Array.isArray(conversationsResult.value?.data) ? conversationsResult.value.data : [];
+        console.log('[Chat] Parsed conversations:', convs.length, convs);
+        setConversations(convs);
+        // Only show pending requests where current user is NOT the requester
+        setPendingRequests(convs.filter(c => c.status === 'pending' && c.requested_by !== user.id));
+      } else {
+        console.error('[Chat] Failed to fetch conversations:', conversationsResult.reason);
+        setConversations([]);
+        setPendingRequests([]);
+      }
     } catch (error) {
-      console.error('[Chat] Failed to fetch chat data:', error);
-      console.error('[Chat] Error response:', error.response);
-      console.error('[Chat] Error details:', error.response?.data || error.message);
+      console.error('[Chat] Unexpected error in fetchData:', error);
       showError('Failed to load chat data. Please refresh the page.', 'Chat Error');
-      setUsers([]); // Ensure users is set to empty array on error
+      setUsers([]);
       setConversations([]);
+      setPendingRequests([]);
     } finally {
       setLoading(false);
     }

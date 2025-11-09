@@ -97,16 +97,20 @@ def get_project(project_id):
                 return jsonify({'error': 'Access denied'}), 403
         # Include tasks, unique assignees, and members for the project
         from models import Task, User, ProjectMember
-        tasks = Task.query.filter_by(project_id=project.id).order_by(Task.created_at.desc()).all()
+        from sqlalchemy.orm import joinedload
+        
+        # Eager load assignee to prevent N+1 queries
+        tasks = Task.query.options(joinedload(Task.assignee)).filter_by(project_id=project.id).order_by(Task.created_at.desc()).all()
         assignee_ids = sorted({t.assigned_to for t in tasks if t.assigned_to})
         assignees = []
         if assignee_ids:
             users = User.query.filter(User.id.in_(assignee_ids)).all()
             assignees = [{'id': u.id, 'name': u.name, 'email': u.email, 'role': u.role} for u in users]
 
-        # Members list
+        # Members list - eager load user relationship to prevent N+1
         membership = []
-        for m in ProjectMember.query.filter_by(project_id=project.id).all():
+        members = ProjectMember.query.options(joinedload(ProjectMember.user)).filter_by(project_id=project.id).all()
+        for m in members:
             membership.append({'user_id': m.user_id, 'name': m.user.name if m.user else None, 'email': m.user.email if m.user else None, 'role': m.role, 'joined_at': m.joined_at.isoformat() if m.joined_at else None})
 
         data = project.to_dict(include_sprints=True)

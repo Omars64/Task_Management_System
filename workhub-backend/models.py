@@ -571,10 +571,13 @@ class ChatConversation(db.Model):
         other_user = self.user1 if current_user_id == self.user2_id else self.user2
         
         # Get the last message for preview
+        # Messages are already sorted by created_at (asc) from relationship order_by
+        # So we iterate in reverse to get the most recent
         last_message = None
         if self.messages:
-            # Get the most recent non-deleted message
-            for msg in sorted(self.messages, key=lambda m: m.created_at, reverse=True):
+            # Iterate in reverse since relationship is ordered by created_at (ascending)
+            # This avoids Python sorting - messages are already ordered by DB
+            for msg in reversed(self.messages):
                 # Skip messages deleted for current user
                 if msg.sender_id == current_user_id and msg.deleted_for_sender:
                     continue
