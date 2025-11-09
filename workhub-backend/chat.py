@@ -219,6 +219,12 @@ def request_chat():
         
         if existing:
             if existing.status == 'accepted':
+                # Eager load user relationships before calling to_dict
+                from sqlalchemy.orm import joinedload
+                existing = ChatConversation.query.options(
+                    joinedload(ChatConversation.user1),
+                    joinedload(ChatConversation.user2)
+                ).get(existing.id)
                 return jsonify({'message': 'Conversation already exists', 'conversation': existing.to_dict(current_user.id)}), 200
             elif existing.status == 'pending':
                 return jsonify({'error': 'Chat request already pending'}), 400
@@ -241,6 +247,13 @@ def request_chat():
         
         db.session.add(conversation)
         db.session.commit()
+        
+        # Eager load user relationships before calling to_dict
+        from sqlalchemy.orm import joinedload
+        conversation = ChatConversation.query.options(
+            joinedload(ChatConversation.user1),
+            joinedload(ChatConversation.user2)
+        ).get(conversation.id)
         
         # Create notification for the other user
         from notifications import create_notification
