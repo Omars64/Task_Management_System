@@ -64,6 +64,31 @@ def create_app():
     # Initialize email service
     email_service.init_app(app)
     
+    # Initialize database schema on first request (idempotent - safe to run multiple times)
+    # This ensures all tables exist when the app starts
+    _db_init_lock = False
+    
+    @app.before_request
+    def _initialize_database():
+        global _db_init_lock
+        # Only run once per worker process
+        if not _db_init_lock:
+            _db_init_lock = True
+            try:
+                with app.app_context():
+                    # Try to import and use the comprehensive initialization script
+                    try:
+                        from init_cloud_sql import init_database
+                        init_database()
+                        logging.getLogger('workhub').info("Database schema initialized using init_cloud_sql.py")
+                    except ImportError:
+                        # Fallback: use SQLAlchemy create_all
+                        db.create_all()
+                        logging.getLogger('workhub').info("Database schema initialized using db.create_all()")
+            except Exception as e:
+                logging.getLogger('workhub').error(f"Database initialization error: {e}")
+                # Don't block app if initialization fails - tables might already exist
+    
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(users_bp, url_prefix='/api/users')
