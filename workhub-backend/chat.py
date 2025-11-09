@@ -207,8 +207,8 @@ def request_chat():
         if not other_user:
             return jsonify({'error': 'User not found'}), 404
         
-        # Validate that the user is approved (includes admin-created users)
-        if other_user.signup_status != 'approved':
+        # Validate that the user is approved (includes admin-created users and legacy users with NULL signup_status)
+        if other_user.signup_status not in ('approved', None):
             return jsonify({'error': 'Cannot chat with this user. User account is not approved.'}), 400
         
         # Check if conversation already exists
@@ -288,6 +288,13 @@ def accept_chat(conversation_id):
         conversation.status = 'accepted'
         conversation.accepted_at = datetime.utcnow()
         db.session.commit()
+        
+        # Eager load user relationships before calling to_dict
+        from sqlalchemy.orm import joinedload
+        conversation = ChatConversation.query.options(
+            joinedload(ChatConversation.user1),
+            joinedload(ChatConversation.user2)
+        ).get(conversation.id)
         
         # Notify the requester
         requester_id = conversation.user2_id if conversation.user1_id == current_user.id else conversation.user1_id
