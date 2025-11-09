@@ -204,18 +204,40 @@ const Chat = () => {
 
   const handleAcceptRequest = async (conversationId) => {
     try {
-      await chatAPI.acceptChat(conversationId);
-      // Refresh conversations and immediately open the accepted one
-      const refreshed = await chatAPI.getConversations();
-      const convs = refreshed.data || [];
-      setConversations(convs);
-      const accepted = convs.find(c => c.id === conversationId) || null;
-      if (accepted) {
-        setSelectedConversation(accepted);
-        fetchMessages(conversationId);
+      const response = await chatAPI.acceptChat(conversationId);
+      showSuccess('Chat request accepted! You can now start messaging.');
+      
+      // Get the accepted conversation from response or refresh
+      let accepted = null;
+      if (response?.data?.conversation) {
+        accepted = response.data.conversation;
+      } else {
+        // Refresh conversations to get updated status
+        const refreshed = await chatAPI.getConversations();
+        const convs = refreshed.data || [];
+        setConversations(convs);
+        accepted = convs.find(c => c.id === conversationId);
       }
-      showSuccess('Chat request accepted');
+      
+      if (accepted) {
+        // Update conversations list
+        setConversations(prev => {
+          const existing = prev.find(c => c.id === conversationId);
+          if (existing) {
+            return prev.map(c => c.id === conversationId ? accepted : c);
+          }
+          return [...prev, accepted];
+        });
+        
+        // Select the accepted conversation and fetch messages
+        setSelectedConversation(accepted);
+        await fetchMessages(conversationId);
+      } else {
+        // Fallback: refresh all data
+        await fetchData();
+      }
     } catch (error) {
+      console.error('[Chat] Error accepting request:', error);
       showError(error.response?.data?.error || 'Failed to accept chat request', 'Error');
     }
   };
@@ -565,6 +587,15 @@ const Chat = () => {
             ) : (
               conversations
                 .filter(c => c.status === 'accepted' || (c.status === 'pending' && c.requested_by !== user.id))
+                .sort((a, b) => {
+                  // Accepted conversations first
+                  if (a.status === 'accepted' && b.status !== 'accepted') return -1;
+                  if (a.status !== 'accepted' && b.status === 'accepted') return 1;
+                  // Then by last message time (most recent first)
+                  const timeA = a.last_message_time ? new Date(a.last_message_time).getTime() : 0;
+                  const timeB = b.last_message_time ? new Date(b.last_message_time).getTime() : 0;
+                  return timeB - timeA;
+                })
                 .map(conv => (
                   <div
                     key={conv.id}

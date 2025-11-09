@@ -98,67 +98,81 @@ def get_conversations():
         result = []
         for conv in conversations:
             try:
-                # Get last message efficiently - limit to recent messages for performance
-                recent_messages = ChatMessage.query.filter_by(
-                    conversation_id=conv.id
-                ).filter(
-                    ChatMessage.is_deleted == False
-                ).order_by(desc(ChatMessage.created_at)).limit(50).all()
-                
-                # Find first message not deleted for current user
-                last_message = None
-                for msg in recent_messages:
-                    if msg.sender_id == current_user.id and msg.deleted_for_sender:
-                        continue
-                    if msg.recipient_id == current_user.id and msg.deleted_for_recipient:
-                        continue
-                    last_message = msg
-                    break
-                
-                # Get unread count efficiently
-                unread_count = ChatMessage.query.filter_by(
-                    conversation_id=conv.id,
-                    recipient_id=current_user.id,
-                    is_read=False
-                ).count()
-                
-                # Determine other user
+                # Determine other user safely
                 if current_user.id == conv.user1_id:
                     other_user = conv.user2
                 else:
                     other_user = conv.user1
                 
-                # Format last message preview
+                # Ensure other_user exists
+                if not other_user:
+                    print(f"[Chat API] Warning: Conversation {conv.id} has missing user. Skipping.")
+                    continue
+                
+                # Get last message efficiently - limit to recent messages for performance
+                last_message = None
                 last_message_preview = None
                 last_message_time = None
-                if last_message and last_message.content:
-                    try:
-                        import json
-                        content_data = json.loads(last_message.content) if isinstance(last_message.content, str) else last_message.content
-                        if isinstance(content_data, dict) and content_data.get('type') == 'file':
-                            last_message_preview = f"📎 {content_data.get('name', 'File')}"
-                        else:
-                            content_str = str(last_message.content)
-                            last_message_preview = content_str[:50] + ('...' if len(content_str) > 50 else '')
-                    except:
-                        try:
-                            content_str = str(last_message.content) if last_message.content else ''
-                            last_message_preview = content_str[:50] + ('...' if len(content_str) > 50 else '')
-                        except:
-                            last_message_preview = None
+                try:
+                    recent_messages = ChatMessage.query.filter_by(
+                        conversation_id=conv.id
+                    ).filter(
+                        ChatMessage.is_deleted == False
+                    ).order_by(desc(ChatMessage.created_at)).limit(50).all()
                     
-                    if last_message.created_at:
-                        last_message_time = last_message.created_at.isoformat()
+                    # Find first message not deleted for current user
+                    for msg in recent_messages:
+                        if msg.sender_id == current_user.id and getattr(msg, 'deleted_for_sender', False):
+                            continue
+                        if msg.recipient_id == current_user.id and getattr(msg, 'deleted_for_recipient', False):
+                            continue
+                        last_message = msg
+                        break
+                    
+                    # Format last message preview
+                    if last_message and last_message.content:
+                        try:
+                            import json
+                            content_data = json.loads(last_message.content) if isinstance(last_message.content, str) else last_message.content
+                            if isinstance(content_data, dict) and content_data.get('type') == 'file':
+                                last_message_preview = f"📎 {content_data.get('name', 'File')}"
+                            else:
+                                content_str = str(last_message.content)
+                                last_message_preview = content_str[:50] + ('...' if len(content_str) > 50 else '')
+                        except:
+                            try:
+                                content_str = str(last_message.content) if last_message.content else ''
+                                last_message_preview = content_str[:50] + ('...' if len(content_str) > 50 else '')
+                            except:
+                                last_message_preview = None
+                        
+                        if last_message.created_at:
+                            last_message_time = last_message.created_at.isoformat()
+                except Exception as msg_error:
+                    print(f"[Chat API] Error loading messages for conversation {conv.id}: {msg_error}")
+                    # Continue without last message
                 
-                # Build result
+                # Get unread count efficiently
+                unread_count = 0
+                try:
+                    unread_count = ChatMessage.query.filter_by(
+                        conversation_id=conv.id,
+                        recipient_id=current_user.id,
+                        is_read=False
+                    ).count()
+                except Exception as unread_error:
+                    print(f"[Chat API] Error counting unread for conversation {conv.id}: {unread_error}")
+                    unread_count = 0
+                
+                # Build result - ensure all fields are safe
                 conv_dict = {
                     'id': conv.id,
                     'other_user': {
                         'id': other_user.id,
                         'name': other_user.name if other_user.name else 'Unknown',
                         'email': other_user.email if other_user.email else ''
-                    } if other_user else None,
-                    'status': conv.status,
+                    },
+                    'status': conv.status or 'pending',
                     'requested_by': conv.requested_by,
                     'requested_at': conv.requested_at.isoformat() if conv.requested_at else None,
                     'accepted_at': conv.accepted_at.isoformat() if conv.accepted_at else None,
@@ -172,8 +186,29 @@ def get_conversations():
                 import traceback
                 print(f"[Chat API] Error converting conversation {conv.id} to dict: {str(conv_error)}")
                 traceback.print_exc()
-                # Skip this conversation if it can't be serialized
-                continue
+                # Try to return at least basic info
+                try:
+                    other_user = conv.user2 if current_user.id == conv.user1_id else conv.user1
+                    if other_user:
+                        result.append({
+                            'id': conv.id,
+                            'other_user': {
+                                'id': other_user.id,
+                                'name': other_user.name or 'Unknown',
+                                'email': other_user.email or ''
+                            },
+                            'status': conv.status or 'pending',
+                            'requested_by': conv.requested_by,
+                            'requested_at': conv.requested_at.isoformat() if conv.requested_at else None,
+                            'accepted_at': conv.accepted_at.isoformat() if conv.accepted_at else None,
+                            'created_at': conv.created_at.isoformat() if conv.created_at else None,
+                            'unread_count': 0,
+                            'last_message': None,
+                            'last_message_time': None
+                        })
+                except:
+                    print(f"[Chat API] Failed to create fallback dict for conversation {conv.id}")
+                    continue
         
         return jsonify(result), 200
     except Exception as e:
@@ -416,13 +451,19 @@ def reject_chat(conversation_id):
 @chat_bp.route('/conversations/<int:conversation_id>/messages', methods=['GET'])
 @jwt_required()
 def get_messages(conversation_id):
-    """Get messages in a conversation"""
+    """Get messages in a conversation - WhatsApp-like simple messaging"""
     try:
         current_user = _get_current_user()
         if not current_user:
             return jsonify({'error': 'Unauthorized'}), 401
         
-        conversation = ChatConversation.query.get(conversation_id)
+        # Eager load conversation with relationships
+        from sqlalchemy.orm import joinedload
+        conversation = ChatConversation.query.options(
+            joinedload(ChatConversation.user1),
+            joinedload(ChatConversation.user2)
+        ).get(conversation_id)
+        
         if not conversation:
             return jsonify({'error': 'Conversation not found'}), 404
         
@@ -434,21 +475,119 @@ def get_messages(conversation_id):
         if conversation.status != 'accepted':
             return jsonify([]), 200
         
-        messages = ChatMessage.query.filter_by(conversation_id=conversation_id).order_by(ChatMessage.created_at.asc()).all()
+        # Eager load messages with all relationships to prevent lazy loading errors
+        messages = ChatMessage.query.options(
+            joinedload(ChatMessage.sender),
+            joinedload(ChatMessage.recipient),
+            joinedload(ChatMessage.reply_to).joinedload(ChatMessage.sender)
+        ).filter_by(
+            conversation_id=conversation_id
+        ).order_by(ChatMessage.created_at.asc()).all()
         
-        # Filter out messages that are hidden for current user
+        # Load reactions separately to avoid relationship issues
+        message_ids = [msg.id for msg in messages]
+        reactions_map = {}
+        if message_ids:
+            reactions = MessageReaction.query.filter(
+                MessageReaction.message_id.in_(message_ids)
+            ).all()
+            for reaction in reactions:
+                if reaction.message_id not in reactions_map:
+                    reactions_map[reaction.message_id] = []
+                reactions_map[reaction.message_id].append(reaction)
+        
+        # Filter out messages that are hidden for current user and serialize safely
         filtered_messages = []
         for msg in messages:
             try:
                 # Skip if deleted for this specific user
-                if msg.sender_id == current_user.id and msg.deleted_for_sender:
+                if msg.sender_id == current_user.id and getattr(msg, 'deleted_for_sender', False):
                     continue
-                if msg.recipient_id == current_user.id and msg.deleted_for_recipient:
+                if msg.recipient_id == current_user.id and getattr(msg, 'deleted_for_recipient', False):
                     continue
-                filtered_messages.append(msg.to_dict())
+                if getattr(msg, 'is_deleted', False):
+                    continue
+                
+                # Safely serialize message
+                msg_dict = {
+                    'id': msg.id,
+                    'conversation_id': msg.conversation_id,
+                    'sender_id': msg.sender_id,
+                    'sender_name': msg.sender.name if msg.sender else 'Unknown',
+                    'recipient_id': msg.recipient_id,
+                    'content': msg.content if msg.content else '',
+                    'delivery_status': msg.delivery_status or 'sent',
+                    'is_read': getattr(msg, 'is_read', False),
+                    'read_at': msg.read_at.isoformat() if hasattr(msg, 'read_at') and msg.read_at else None,
+                    'created_at': msg.created_at.isoformat() if msg.created_at else None,
+                    'updated_at': msg.updated_at.isoformat() if hasattr(msg, 'updated_at') and msg.updated_at else None,
+                    'is_edited': getattr(msg, 'is_edited', False),
+                    'is_deleted': getattr(msg, 'is_deleted', False),
+                    'reply_to': None,
+                    'reactions': []
+                }
+                
+                # Handle reply_to safely
+                if msg.reply_to_id and msg.reply_to:
+                    try:
+                        reply_content = msg.reply_to.content or ''
+                        # Try to parse JSON for file attachments
+                        try:
+                            import json
+                            reply_data = json.loads(reply_content) if isinstance(reply_content, str) else reply_content
+                            if isinstance(reply_data, dict) and reply_data.get('type') == 'file':
+                                reply_content = f"📎 {reply_data.get('name', 'File')}"
+                            else:
+                                reply_content = reply_content[:30] + ('...' if len(reply_content) > 30 else '')
+                        except:
+                            reply_content = reply_content[:30] + ('...' if len(reply_content) > 30 else '')
+                        
+                        msg_dict['reply_to'] = {
+                            'id': msg.reply_to.id,
+                            'content': reply_content,
+                            'sender_name': msg.reply_to.sender.name if msg.reply_to.sender else 'Unknown'
+                        }
+                    except Exception as reply_error:
+                        print(f"[Chat API] Error processing reply_to for message {msg.id}: {reply_error}")
+                        msg_dict['reply_to'] = None
+                
+                # Handle reactions safely - use pre-loaded reactions map
+                try:
+                    msg_dict['reactions'] = []
+                    if msg.id in reactions_map:
+                        for reaction in reactions_map[msg.id]:
+                            try:
+                                # Get user name safely
+                                user_name = 'Unknown'
+                                try:
+                                    reaction_user = User.query.get(reaction.user_id)
+                                    if reaction_user:
+                                        user_name = reaction_user.name or 'Unknown'
+                                except:
+                                    pass
+                                
+                                reaction_dict = {
+                                    'id': reaction.id,
+                                    'message_id': reaction.message_id,
+                                    'user_id': reaction.user_id,
+                                    'user_name': user_name,
+                                    'emoji': reaction.emoji if reaction.emoji else '',
+                                    'created_at': reaction.created_at.isoformat() if hasattr(reaction, 'created_at') and reaction.created_at else None
+                                }
+                                msg_dict['reactions'].append(reaction_dict)
+                            except Exception as react_error:
+                                print(f"[Chat API] Error processing reaction {reaction.id}: {react_error}")
+                                continue
+                except Exception as reactions_error:
+                    print(f"[Chat API] Error loading reactions for message {msg.id}: {reactions_error}")
+                    msg_dict['reactions'] = []
+                
+                filtered_messages.append(msg_dict)
             except Exception as msg_error:
                 # Skip messages that can't be serialized
-                print(f"[Chat API] Error serializing message {msg.id}: {msg_error}")
+                import traceback
+                print(f"[Chat API] Error serializing message {msg.id}: {str(msg_error)}")
+                traceback.print_exc()
                 continue
         
         return jsonify(filtered_messages), 200
