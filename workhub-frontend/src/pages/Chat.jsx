@@ -86,18 +86,21 @@ const Chat = () => {
       setLoading(true);
       console.log('[Chat] Fetching users and conversations...');
       
+      // Use the same users API as Users window to get all users
       // Use Promise.allSettled to handle partial failures gracefully
       const [usersResult, conversationsResult] = await Promise.allSettled([
-        chatAPI.getUsers(),
+        usersAPI.getAll(), // Use same API as Users window
         chatAPI.getConversations()
       ]);
       
-      // Handle users result
+      // Handle users result - exclude current user
       if (usersResult.status === 'fulfilled') {
-        const usersList = Array.isArray(usersResult.value?.data) ? usersResult.value.data : [];
+        const allUsers = Array.isArray(usersResult.value?.data) ? usersResult.value.data : [];
+        // Filter out current user
+        const usersList = allUsers.filter(u => u.id !== user.id);
         console.log('[Chat] Parsed users list:', usersList.length, usersList);
         if (usersList.length === 0) {
-          console.warn('[Chat] No users returned from API. Check if there are approved users in the database.');
+          console.warn('[Chat] No users returned from API.');
         }
         setUsers(usersList);
       } else {
@@ -141,6 +144,13 @@ const Chat = () => {
 
   const fetchMessages = async (conversationId) => {
     try {
+      // Don't fetch messages for pending conversations
+      const conv = conversations.find(c => c.id === conversationId);
+      if (conv && conv.status !== 'accepted') {
+        setMessages([]);
+        return;
+      }
+      
       const response = await chatAPI.getMessages(conversationId);
       const msgs = response.data || [];
       setMessages(msgs);
@@ -163,6 +173,10 @@ const Chat = () => {
       chatAPI.markConversationRead(conversationId).catch(console.error);
     } catch (error) {
       console.error('Failed to fetch messages:', error);
+      // Don't show error for pending conversations
+      if (error.response?.status !== 400) {
+        setMessages([]);
+      }
     }
   };
 
@@ -250,7 +264,7 @@ const Chat = () => {
     // Allow selecting pending conversations so User B can see and accept/reject requests
     if (conversation.status === 'pending') {
       setSelectedConversation(conversation);
-      // Don't fetch messages for pending conversations - they don't have messages yet
+      setMessages([]); // Clear messages for pending conversations
       return;
     }
     if (conversation.status !== 'accepted') {

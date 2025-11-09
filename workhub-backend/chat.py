@@ -420,23 +420,32 @@ def get_messages(conversation_id):
         if conversation.user1_id != current_user.id and conversation.user2_id != current_user.id:
             return jsonify({'error': 'Access denied'}), 403
         
+        # If conversation is not accepted, return empty array instead of error
         if conversation.status != 'accepted':
-            return jsonify({'error': 'Conversation not accepted'}), 400
+            return jsonify([]), 200
         
         messages = ChatMessage.query.filter_by(conversation_id=conversation_id).order_by(ChatMessage.created_at.asc()).all()
         
         # Filter out messages that are hidden for current user
         filtered_messages = []
         for msg in messages:
-            # Skip if deleted for this specific user
-            if msg.sender_id == current_user.id and msg.deleted_for_sender:
+            try:
+                # Skip if deleted for this specific user
+                if msg.sender_id == current_user.id and msg.deleted_for_sender:
+                    continue
+                if msg.recipient_id == current_user.id and msg.deleted_for_recipient:
+                    continue
+                filtered_messages.append(msg.to_dict())
+            except Exception as msg_error:
+                # Skip messages that can't be serialized
+                print(f"[Chat API] Error serializing message {msg.id}: {msg_error}")
                 continue
-            if msg.recipient_id == current_user.id and msg.deleted_for_recipient:
-                continue
-            filtered_messages.append(msg.to_dict())
         
         return jsonify(filtered_messages), 200
     except Exception as e:
+        import traceback
+        print(f"[Chat API] Error in get_messages: {str(e)}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
