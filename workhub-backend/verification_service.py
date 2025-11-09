@@ -43,36 +43,35 @@ class VerificationService:
         user.verification_code_expires = expiry
         db.session.commit()
         
-        # Check if email is configured
+        # Check if email is configured properly
         from flask import current_app
         app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
-        mail_configured = mail and app.config.get('MAIL_USERNAME') and app.config.get('MAIL_PASSWORD')
+        mail_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
+        mail_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
+        mail_configured = mail and mail_username and mail_password
         
-        # Try to send email in background thread to avoid blocking
+        # Try to send email - use a timeout to avoid blocking too long
         email_sent = False
         if mail_configured:
-            # Send email in background thread to avoid blocking the API response
-            def send_email_async():
-                try:
-                    result = VerificationService.send_verification_email(user.email, user.name, code, mail)
-                    if result:
-                        print(f"✓ Verification email sent successfully to {user.email}")
-                    else:
-                        print(f"✗ Failed to send verification email to {user.email}")
-                except Exception as e:
-                    print(f"✗ Error sending verification email to {user.email}: {e}")
-                    import traceback
-                    traceback.print_exc()
-            
-            # Start email sending in background thread
-            thread = threading.Thread(target=send_email_async, daemon=True)
-            thread.start()
-            
-            # Assume email will be sent (optimistic) - actual result handled in background
-            # This prevents blocking the API response
-            email_sent = True
+            try:
+                # Send email with timeout - this will block briefly but ensures we know if it succeeded
+                result = VerificationService.send_verification_email(user.email, user.name, code, mail)
+                if result:
+                    print(f"✓ Verification email sent successfully to {user.email}")
+                    email_sent = True
+                else:
+                    print(f"✗ Failed to send verification email to {user.email} - check email configuration")
+                    email_sent = False
+            except Exception as e:
+                print(f"✗ Error sending verification email to {user.email}: {e}")
+                import traceback
+                traceback.print_exc()
+                email_sent = False
         else:
             print(f"⚠ Mail not configured - cannot send email to {user.email}")
+            print(f"   MAIL_USERNAME: {'SET' if mail_username else 'NOT SET'}")
+            print(f"   MAIL_PASSWORD: {'SET' if mail_password else 'NOT SET'}")
+            print(f"   Mail instance: {'AVAILABLE' if mail else 'NOT AVAILABLE'}")
         
         # Log the code for development (when email is not configured)
         # SECURITY: Code is ONLY logged server-side, NEVER returned to client

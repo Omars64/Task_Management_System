@@ -422,17 +422,15 @@ def signup():
         
         # SECURITY: Never include verification code in API response
         # Code is sent via email only (or logged server-side in development)
+        email_sent = verification_result.get('email_sent', False)
+        
         response_data = {
-            "message": "Signup successful! Please check your email for verification code.",
+            "message": "Signup successful! Please check your email for verification code." if email_sent else "Signup successful! Verification code has been generated. Please check server logs for the code (email not configured).",
             "user_id": user.id,
             "needs_verification": True,
             "needs_approval": True,
-            "email_sent": verification_result.get('email_sent', False)
+            "email_sent": email_sent
         }
-        
-        # If email wasn't sent (dev mode), update message but don't expose code
-        if not verification_result.get('email_sent'):
-            response_data['message'] = "Signup successful! Verification code has been generated. Please check server logs for the code (email not configured)."
         
         return jsonify(response_data), 201
         
