@@ -301,20 +301,34 @@ const Tasks = () => {
       return;
     }
 
+    // Store form data and selected task for API call (before reset)
+    const taskData = { ...formData };
+    const isEdit = !!selectedTask;
+    const taskId = selectedTask?.id;
+    const taskToEdit = selectedTask ? { ...selectedTask } : null;
+
+    // Optimistic UI: Clear form and close modal immediately for better UX
+    setShowModal(false);
+    resetForm();
+
     try {
-      if (selectedTask) {
-        await tasksAPI.update(selectedTask.id, formData);
-        showSuccess('Task updated successfully');
+      if (isEdit) {
+        await tasksAPI.update(taskId, taskData);
+        addToast('Task updated successfully', { type: 'success' });
       } else {
-        await tasksAPI.create(formData);
-        showSuccess('Task created successfully');
+        await tasksAPI.create(taskData);
+        addToast('Task created successfully', { type: 'success' });
       }
-      setShowModal(false);
-      resetForm();
       fetchTasks();
     } catch (error) {
       const errorData = error.response?.data;
-      showError(errorData?.error || 'Failed to save task', 'Error Saving Task');
+      addToast(errorData?.error || 'Failed to save task', { type: 'error' });
+      // Reopen modal with form data if edit failed, or just show error for create
+      if (isEdit && taskToEdit) {
+        setFormData(taskData);
+        setSelectedTask(taskToEdit);
+        setShowModal(true);
+      }
     }
   };
 
