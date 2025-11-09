@@ -568,7 +568,31 @@ class ChatConversation(db.Model):
     
     def to_dict(self, current_user_id=None):
         """Convert to dictionary, showing other user info"""
-        other_user = self.user1 if current_user_id == self.user2_id else self.user2
+        # Determine the other user safely
+        if current_user_id == self.user1_id:
+            other_user = self.user2
+        elif current_user_id == self.user2_id:
+            other_user = self.user1
+        else:
+            # Fallback: if current_user_id doesn't match either, try to determine from context
+            # This shouldn't happen in normal flow, but handle gracefully
+            other_user = self.user1 if self.user1_id != current_user_id else self.user2
+        
+        # Ensure other_user exists and is loaded
+        if not other_user:
+            # If relationship isn't loaded or user is missing, return minimal data
+            return {
+                'id': self.id,
+                'other_user': None,
+                'status': self.status,
+                'requested_by': self.requested_by,
+                'requested_at': self.requested_at.isoformat() if self.requested_at else None,
+                'accepted_at': self.accepted_at.isoformat() if self.accepted_at else None,
+                'created_at': self.created_at.isoformat() if self.created_at else None,
+                'unread_count': 0,
+                'last_message': None,
+                'last_message_time': None
+            }
         
         # Get the last message for preview
         # Messages are already sorted by created_at (asc) from relationship order_by
@@ -579,18 +603,19 @@ class ChatConversation(db.Model):
             # This avoids Python sorting - messages are already ordered by DB
             for msg in reversed(self.messages):
                 # Skip messages deleted for current user
-                if msg.sender_id == current_user_id and msg.deleted_for_sender:
-                    continue
-                if msg.recipient_id == current_user_id and msg.deleted_for_recipient:
-                    continue
-                if msg.is_deleted:
+                if current_user_id:
+                    if msg.sender_id == current_user_id and getattr(msg, 'deleted_for_sender', False):
+                        continue
+                    if msg.recipient_id == current_user_id and getattr(msg, 'deleted_for_recipient', False):
+                        continue
+                if getattr(msg, 'is_deleted', False):
                     continue
                 last_message = msg
                 break
         
         # Format last message preview
         last_message_preview = None
-        if last_message:
+        if last_message and last_message.content:
             try:
                 # Try to parse as JSON (for file attachments)
                 import json
@@ -598,26 +623,41 @@ class ChatConversation(db.Model):
                 if isinstance(content_data, dict) and content_data.get('type') == 'file':
                     last_message_preview = f"📎 {content_data.get('name', 'File')}"
                 else:
-                    last_message_preview = last_message.content[:50] + ('...' if len(last_message.content) > 50 else '')
+                    content_str = str(last_message.content)
+                    last_message_preview = content_str[:50] + ('...' if len(content_str) > 50 else '')
             except:
                 # If not JSON, use content directly
-                last_message_preview = last_message.content[:50] + ('...' if len(last_message.content) > 50 else '')
+                try:
+                    content_str = str(last_message.content) if last_message.content else ''
+                    last_message_preview = content_str[:50] + ('...' if len(content_str) > 50 else '')
+                except:
+                    last_message_preview = None
+        
+        # Calculate unread count safely
+        unread_count = 0
+        if current_user_id and self.messages:
+            try:
+                unread_count = len([m for m in self.messages 
+                                  if getattr(m, 'recipient_id', None) == current_user_id 
+                                  and not getattr(m, 'is_read', False)])
+            except:
+                unread_count = 0
         
         return {
             'id': self.id,
             'other_user': {
                 'id': other_user.id,
-                'name': other_user.name,
-                'email': other_user.email
+                'name': other_user.name if other_user.name else 'Unknown',
+                'email': other_user.email if other_user.email else ''
             } if other_user else None,
             'status': self.status,
             'requested_by': self.requested_by,
             'requested_at': self.requested_at.isoformat() if self.requested_at else None,
             'accepted_at': self.accepted_at.isoformat() if self.accepted_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'unread_count': len([m for m in self.messages if m.recipient_id == current_user_id and not m.is_read]) if current_user_id else 0,
+            'unread_count': unread_count,
             'last_message': last_message_preview,
-            'last_message_time': last_message.created_at.isoformat() if last_message and last_message.created_at else None
+            'last_message_time': last_message.created_at.isoformat() if last_message and hasattr(last_message, 'created_at') and last_message.created_at else None
         }
 
 

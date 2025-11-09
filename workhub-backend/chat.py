@@ -96,8 +96,23 @@ def get_conversations():
             (ChatConversation.user2_id == current_user.id)
         ).all()
         
-        return jsonify([conv.to_dict(current_user.id) for conv in conversations]), 200
+        # Convert conversations to dict with error handling
+        result = []
+        for conv in conversations:
+            try:
+                result.append(conv.to_dict(current_user.id))
+            except Exception as conv_error:
+                import traceback
+                print(f"[Chat API] Error converting conversation {conv.id} to dict: {str(conv_error)}")
+                traceback.print_exc()
+                # Skip this conversation if it can't be serialized
+                continue
+        
+        return jsonify(result), 200
     except Exception as e:
+        import traceback
+        print(f"[Chat API] Error in get_conversations: {str(e)}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
