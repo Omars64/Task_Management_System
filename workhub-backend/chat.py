@@ -244,6 +244,8 @@ def request_chat():
         # Ensure user1_id < user2_id for consistency
         user1_id, user2_id = sorted([current_user.id, other_user_id])
         
+        print(f"[Chat API] Creating chat request: user1_id={user1_id}, user2_id={user2_id}, requested_by={current_user.id}")
+        
         conversation = ChatConversation(
             user1_id=user1_id,
             user2_id=user2_id,
@@ -252,7 +254,13 @@ def request_chat():
         )
         
         db.session.add(conversation)
-        db.session.commit()
+        try:
+            db.session.commit()
+            print(f"[Chat API] Chat conversation created successfully with ID: {conversation.id}")
+        except Exception as commit_error:
+            db.session.rollback()
+            print(f"[Chat API] Error committing conversation: {commit_error}")
+            raise
         
         # Eager load user relationships before calling to_dict
         from sqlalchemy.orm import joinedload
@@ -261,17 +269,46 @@ def request_chat():
             joinedload(ChatConversation.user2)
         ).get(conversation.id)
         
-        # Create notification for the other user
-        from notifications import create_notification
-        create_notification(
-            user_id=other_user_id,
-            title='New Chat Request',
-            message=f'{current_user.name} wants to start a chat with you',
-            notif_type='chat_request',
-            related_conversation_id=conversation.id
-        )
+        if not conversation:
+            print(f"[Chat API] ERROR: Conversation {conversation.id} not found after creation!")
+            return jsonify({'error': 'Failed to create conversation'}), 500
         
-        return jsonify({'message': 'Chat request sent', 'conversation': conversation.to_dict(current_user.id)}), 201
+        # Create notification for the other user
+        try:
+            from notifications import create_notification
+            create_notification(
+                user_id=other_user_id,
+                title='New Chat Request',
+                message=f'{current_user.name} wants to start a chat with you',
+                notif_type='chat_request',
+                related_conversation_id=conversation.id
+            )
+            print(f"[Chat API] Notification created for user {other_user_id}")
+        except Exception as notif_error:
+            print(f"[Chat API] Warning: Failed to create notification: {notif_error}")
+            # Don't fail the request if notification fails
+        
+        try:
+            conv_dict = conversation.to_dict(current_user.id)
+            print(f"[Chat API] Successfully converted conversation to dict")
+            return jsonify({'message': 'Chat request sent', 'conversation': conv_dict}), 201
+        except Exception as dict_error:
+            print(f"[Chat API] Error converting conversation to dict: {dict_error}")
+            import traceback
+            traceback.print_exc()
+            # Return basic response even if to_dict fails
+            return jsonify({
+                'message': 'Chat request sent',
+                'conversation': {
+                    'id': conversation.id,
+                    'status': conversation.status,
+                    'other_user': {
+                        'id': other_user.id,
+                        'name': other_user.name,
+                        'email': other_user.email
+                    }
+                }
+            }), 201
     except SQLAlchemyError as e:
         db.session.rollback()
         import traceback
