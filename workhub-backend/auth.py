@@ -656,10 +656,19 @@ def reject_user(user_id):
     
     db.session.commit()
     
-    # Send rejection email
+    # Send rejection email in background thread to avoid blocking the API response
     mail = current_app.extensions.get('mail')
     if mail:
-        verification_service.send_rejection_email(user, reason, mail)
+        import threading
+        def send_email_async():
+            try:
+                verification_service.send_rejection_email(user, reason, mail)
+            except Exception as e:
+                print(f"Error sending rejection email in background: {str(e)}")
+        
+        # Start email sending in background thread
+        thread = threading.Thread(target=send_email_async, daemon=True)
+        thread.start()
     
     return jsonify({
         "message": "User rejected",

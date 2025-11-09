@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
 import { FiCheck, FiX, FiClock, FiMail, FiUser } from 'react-icons/fi';
 import { useModal } from '../hooks/useModal';
+import { useToast } from '../context/ToastContext';
 import Modal from './Modal';
 
 const PendingUsers = () => {
   const { modalState, showAlert, showConfirm, showError, showSuccess, closeModal } = useModal();
+  const { addToast } = useToast();
   const [pendingUsers, setPendingUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'rejected'
@@ -85,14 +87,30 @@ const PendingUsers = () => {
   const handleReject = async () => {
     if (!selectedUser) return;
 
-    setActionLoading(true);
+    // Store user info and reason before closing modal
+    const userId = selectedUser.id;
+    const userName = selectedUser.name;
+    const reason = rejectionReason;
+    
+    // Close modal immediately for better UX
+    closeRejectModal();
+    
+    // Show toast immediately
+    addToast(`Rejecting ${userName}...`, { type: 'info', timeout: 2000 });
+
     try {
-      await authAPI.rejectUser(selectedUser.id, rejectionReason);
-      showSuccess(`${selectedUser.name}'s signup has been rejected and user has been notified.`, 'User Rejected');
-      closeRejectModal();
+      await authAPI.rejectUser(userId, reason);
+      addToast(`${userName}'s signup has been rejected and user has been notified.`, { type: 'success' });
       fetchPendingUsers(); // Refresh list
     } catch (error) {
-      showError(error.response?.data?.error || 'Failed to reject user', 'Error Rejecting User');
+      addToast(error.response?.data?.error || 'Failed to reject user', { type: 'error' });
+      // Reopen modal if error occurred
+      const user = pendingUsers.find(u => u.id === userId);
+      if (user) {
+        setSelectedUser(user);
+        setRejectionReason(reason);
+        setShowRejectModal(true);
+      }
     } finally {
       setActionLoading(false);
     }
