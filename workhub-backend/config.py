@@ -18,10 +18,19 @@ class Config:
     CLOUD_SQL_CONNECTION_NAME = os.environ.get('CLOUD_SQL_CONNECTION_NAME')
     
     # Determine DB_HOST based on environment
-    if CLOUD_SQL_CONNECTION_NAME:
-        # When running on Cloud Run, connect via Unix socket
-        DB_HOST = f'/cloudsql/{CLOUD_SQL_CONNECTION_NAME}'
-        DB_PORT = None  # Not used for Unix socket connections
+    # Priority: DB_HOST env var > CLOUD_SQL_CONNECTION_NAME > localhost
+    # Note: pymssql doesn't support Unix sockets, so we always use TCP/IP
+    explicit_db_host = os.environ.get('DB_HOST')
+    if explicit_db_host:
+        # Use explicit DB_HOST (e.g., private IP for Cloud SQL)
+        DB_HOST = explicit_db_host
+        DB_PORT = os.environ.get('DB_PORT', '1433')
+    elif CLOUD_SQL_CONNECTION_NAME:
+        # Fallback: if CLOUD_SQL_CONNECTION_NAME is set but DB_HOST is not,
+        # we can't use Unix socket with pymssql, so this is an error
+        # For now, default to localhost (this shouldn't happen in production)
+        DB_HOST = os.environ.get('DB_HOST', 'localhost')
+        DB_PORT = os.environ.get('DB_PORT', '1433')
     else:
         # Local or Docker environment
         DB_HOST = os.environ.get('DB_HOST', 'localhost')
@@ -39,16 +48,11 @@ class Config:
 
     if DB_DIALECT == 'mssql':
         # Use pymssql for MS SQL Server
-        if CLOUD_SQL_CONNECTION_NAME:
-            # Cloud SQL connection via Unix socket
-            SQLALCHEMY_DATABASE_URI = (
-                f"mssql+pymssql://{encoded_user}:{encoded_password}@{DB_HOST}/{DB_NAME}"
-            )
-        else:
-            # Standard TCP connection
-            SQLALCHEMY_DATABASE_URI = (
-                f"mssql+pymssql://{encoded_user}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-            )
+        # pymssql only supports TCP/IP connections, not Unix sockets
+        # Always use TCP/IP connection format
+        SQLALCHEMY_DATABASE_URI = (
+            f"mssql+pymssql://{encoded_user}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+        )
     else:
         SQLALCHEMY_DATABASE_URI = (
             f"mysql+pymysql://{encoded_user}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
