@@ -133,12 +133,17 @@
   white-space: nowrap;
 }
 
-.conversation-status {
+.conversation-status,
+.conversation-preview {
   font-size: 12px;
   color: var(--text-light, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.conversation-item.active .conversation-status {
+.conversation-item.active .conversation-status,
+.conversation-item.active .conversation-preview {
   color: rgba(255, 255, 255, 0.8);
 }
 
@@ -285,6 +290,107 @@
   padding: 12px 16px;
   border-radius: 12px;
   position: relative;
+  max-width: 100%;
+}
+
+.message-reply-preview {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border-left: 3px solid var(--primary-color, #68939d);
+  border-radius: 4px;
+}
+
+.message.sent .message-reply-preview {
+  background: rgba(255, 255, 255, 0.15);
+  border-left-color: rgba(255, 255, 255, 0.8);
+}
+
+.reply-indicator {
+  width: 3px;
+  background: var(--primary-color, #68939d);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.message.sent .reply-indicator {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.reply-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.reply-sender {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary-color, #68939d);
+  margin-bottom: 2px;
+}
+
+.message.sent .reply-sender {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.reply-text {
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message.sent .reply-text {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.reply-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-secondary, #f9fafb);
+  border-left: 3px solid var(--primary-color, #68939d);
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.reply-preview-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.reply-preview-sender {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary-color, #68939d);
+  margin-bottom: 2px;
+}
+
+.reply-preview-text {
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-preview-close {
+  background: transparent;
+  border: none;
+  color: var(--text-light, #6b7280);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 4px;
+  margin-left: 8px;
+}
+
+.reply-preview-close:hover {
+  color: var(--text-primary, #111827);
 }
 
 .message.sent .message-content {
@@ -308,10 +414,23 @@
 
 .message-footer {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
   margin-top: 4px;
   font-size: 11px;
+}
+
+.message-time-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.message-status {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
 }
 
 .message-time {

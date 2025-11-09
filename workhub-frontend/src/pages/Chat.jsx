@@ -31,6 +31,7 @@ const Chat = () => {
   const [galleryImages, setGalleryImages] = useState([]); // {id, name, url}
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [showReactionPicker, setShowReactionPicker] = useState(null); // messageId or null
+  const [replyingTo, setReplyingTo] = useState(null); // messageId or null
   const messagesEndRef = useRef(null);
   const messageIntervalRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -177,10 +178,11 @@ const Chat = () => {
         }
       }
       if (newMessage.trim()) {
-        await chatAPI.sendMessage(selectedConversation.id, newMessage);
+        await chatAPI.sendMessage(selectedConversation.id, newMessage, replyingTo);
       }
       setNewMessage('');
       setAttachmentFiles([]);
+      setReplyingTo(null);
       await fetchMessages(selectedConversation.id);
     } catch (error) {
       showError(error.response?.data?.error || 'Failed to send message', 'Error Sending Message');
@@ -498,7 +500,9 @@ const Chat = () => {
                     </div>
                     <div className="conversation-info">
                       <div className="conversation-name">{conv.other_user.name}</div>
-                      <div className="conversation-status">{conv.status}</div>
+                      <div className="conversation-preview">
+                        {conv.last_message || (conv.status === 'accepted' ? 'No messages yet' : conv.status)}
+                      </div>
                     </div>
                     {conv.unread_count > 0 && (
                       <div className="unread-badge">{conv.unread_count}</div>
@@ -610,6 +614,15 @@ const Chat = () => {
                       {msg.sender_id !== user.id && (
                         <div className="message-sender">{msg.sender_name}</div>
                       )}
+                      {msg.reply_to && (
+                        <div className="message-reply-preview">
+                          <div className="reply-indicator"></div>
+                          <div className="reply-content">
+                            <div className="reply-sender">{msg.reply_to.sender_name}</div>
+                            <div className="reply-text">{msg.reply_to.content}</div>
+                          </div>
+                        </div>
+                      )}
                       {editingMessageId === msg.id ? (
                         <div className="message-editing">
                           <input
@@ -690,11 +703,11 @@ const Chat = () => {
                         })()
                       )}
                       <div className="message-footer">
-                        <span className="message-time">
-                          {moment(msg.created_at).format('HH:mm')}
-                        </span>
-                        {getDeliveryIcon(msg)}
-                        <div className="message-actions">
+                        <div className="message-time-actions">
+                          <span className="message-time">
+                            {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                          </span>
+                          <div className="message-actions">
                             <button
                               type="button"
                               className="message-actions-toggle"
@@ -708,6 +721,7 @@ const Chat = () => {
                             </button>
                             {messageActionId === msg.id && (
                               <div className="message-actions-menu">
+                                <button type="button" onClick={() => { setReplyingTo(msg.id); setMessageActionId(null); }}>Reply</button>
                                 {msg.sender_id === user.id && (
                                   <button type="button" disabled={!canModifyMessage(msg) || msg.is_deleted} onClick={() => startEditMessage(msg)}>Edit</button>
                                 )}
@@ -718,6 +732,10 @@ const Chat = () => {
                               </div>
                             )}
                           </div>
+                        </div>
+                        <div className="message-status">
+                          {getDeliveryIcon(msg)}
+                        </div>
                       </div>
                       {msg.reactions && msg.reactions.length > 0 && (
                         <div className="message-reactions">
@@ -816,9 +834,21 @@ const Chat = () => {
                     <input type="file" onChange={handleAttachmentChange} style={{ display: 'none' }} multiple />
                   </label>
                 </div>
+                {replyingTo && (() => {
+                  const replyMsg = messages.find(m => m.id === replyingTo);
+                  return replyMsg ? (
+                    <div className="reply-preview-bar">
+                      <div className="reply-preview-content">
+                        <div className="reply-preview-sender">Replying to {replyMsg.sender_name}</div>
+                        <div className="reply-preview-text">{replyMsg.content.length > 50 ? replyMsg.content.substring(0, 50) + '...' : replyMsg.content}</div>
+                      </div>
+                      <button type="button" className="reply-preview-close" onClick={() => setReplyingTo(null)}>×</button>
+                    </div>
+                  ) : null;
+                })()}
                 <textarea
                   className="message-input"
-                  placeholder="Type a message..."
+                  placeholder={replyingTo ? "Type a reply..." : "Type a message..."}
                   value={newMessage}
                   onChange={(e) => { setNewMessage(e.target.value); notifyTyping(); }}
                   onKeyDown={(e) => {

@@ -569,6 +569,37 @@ class ChatConversation(db.Model):
     def to_dict(self, current_user_id=None):
         """Convert to dictionary, showing other user info"""
         other_user = self.user1 if current_user_id == self.user2_id else self.user2
+        
+        # Get the last message for preview
+        last_message = None
+        if self.messages:
+            # Get the most recent non-deleted message
+            for msg in sorted(self.messages, key=lambda m: m.created_at, reverse=True):
+                # Skip messages deleted for current user
+                if msg.sender_id == current_user_id and msg.deleted_for_sender:
+                    continue
+                if msg.recipient_id == current_user_id and msg.deleted_for_recipient:
+                    continue
+                if msg.is_deleted:
+                    continue
+                last_message = msg
+                break
+        
+        # Format last message preview
+        last_message_preview = None
+        if last_message:
+            try:
+                # Try to parse as JSON (for file attachments)
+                import json
+                content_data = json.loads(last_message.content) if isinstance(last_message.content, str) else last_message.content
+                if isinstance(content_data, dict) and content_data.get('type') == 'file':
+                    last_message_preview = f"📎 {content_data.get('name', 'File')}"
+                else:
+                    last_message_preview = last_message.content[:50] + ('...' if len(last_message.content) > 50 else '')
+            except:
+                # If not JSON, use content directly
+                last_message_preview = last_message.content[:50] + ('...' if len(last_message.content) > 50 else '')
+        
         return {
             'id': self.id,
             'other_user': {
@@ -581,7 +612,9 @@ class ChatConversation(db.Model):
             'requested_at': self.requested_at.isoformat() if self.requested_at else None,
             'accepted_at': self.accepted_at.isoformat() if self.accepted_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'unread_count': len([m for m in self.messages if m.recipient_id == current_user_id and not m.is_read]) if current_user_id else 0
+            'unread_count': len([m for m in self.messages if m.recipient_id == current_user_id and not m.is_read]) if current_user_id else 0,
+            'last_message': last_message_preview,
+            'last_message_time': last_message.created_at.isoformat() if last_message and last_message.created_at else None
         }
 
 
@@ -595,6 +628,7 @@ class ChatMessage(db.Model):
     recipient_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     # Use UnicodeText to preserve emojis and non-ASCII characters reliably across DB backends
     content = db.Column(db.UnicodeText, nullable=False)
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('chat_messages.id'), nullable=True)  # Reply to another message
     delivery_status = db.Column(db.String(20), default='sent')  # 'sent', 'delivered', 'read'
     is_read = db.Column(db.Boolean, default=False)
     read_at = db.Column(db.DateTime)
@@ -607,9 +641,34 @@ class ChatMessage(db.Model):
     
     sender = db.relationship('User', foreign_keys=[sender_id], backref='sent_messages')
     recipient = db.relationship('User', foreign_keys=[recipient_id], backref='received_messages')
+    reply_to = db.relationship('ChatMessage', remote_side=[id], backref='replies', foreign_keys=[reply_to_id])
     reactions = db.relationship('MessageReaction', backref='message', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self):
+        # Get reply info if this message is a reply
+        reply_info = None
+        if self.reply_to_id and self.reply_to:
+            try:
+                # Try to parse reply content (might be JSON for files)
+                import json
+                reply_content = self.reply_to.content
+                try:
+                    reply_data = json.loads(reply_content) if isinstance(reply_content, str) else reply_content
+                    if isinstance(reply_data, dict) and reply_data.get('type') == 'file':
+                        reply_content = f"📎 {reply_data.get('name', 'File')}"
+                    else:
+                        reply_content = reply_content[:30] + ('...' if len(reply_content) > 30 else '')
+                except:
+                    reply_content = reply_content[:30] + ('...' if len(reply_content) > 30 else '')
+                
+                reply_info = {
+                    'id': self.reply_to.id,
+                    'content': reply_content,
+                    'sender_name': self.reply_to.sender.name if self.reply_to.sender else None
+                }
+            except:
+                pass
+        
         return {
             'id': self.id,
             'conversation_id': self.conversation_id,
@@ -617,6 +676,7 @@ class ChatMessage(db.Model):
             'sender_name': self.sender.name if self.sender else None,
             'recipient_id': self.recipient_id,
             'content': self.content,
+            'reply_to': reply_info,
             'delivery_status': self.delivery_status,
             'is_read': self.is_read,
             'read_at': self.read_at.isoformat() if self.read_at else None,

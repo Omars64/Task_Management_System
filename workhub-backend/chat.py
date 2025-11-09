@@ -288,9 +288,16 @@ def send_message(conversation_id):
         
         payload = request.get_json(silent=True) or {}
         content = payload.get('content', '').strip()
+        reply_to_id = payload.get('reply_to_id')  # Optional: ID of message being replied to
         
         if not content:
             return jsonify({'error': 'Message content is required'}), 400
+        
+        # Validate reply_to_id if provided
+        if reply_to_id:
+            reply_message = ChatMessage.query.get(reply_to_id)
+            if not reply_message or reply_message.conversation_id != conversation_id:
+                return jsonify({'error': 'Invalid reply message'}), 400
         
         # Determine recipient
         recipient_id = conversation.user2_id if conversation.user1_id == current_user.id else conversation.user1_id
@@ -300,6 +307,7 @@ def send_message(conversation_id):
             sender_id=current_user.id,
             recipient_id=recipient_id,
             content=content,
+            reply_to_id=reply_to_id,
             delivery_status='sent'
         )
         
