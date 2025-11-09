@@ -85,22 +85,91 @@ def get_conversations():
         if not current_user:
             return jsonify({'error': 'Unauthorized'}), 401
         
-        # Eager load relationships to prevent N+1 queries
+        # Eager load only user relationships, NOT messages (to avoid loading thousands of messages)
         from sqlalchemy.orm import joinedload
+        from sqlalchemy import desc
         conversations = ChatConversation.query.options(
             joinedload(ChatConversation.user1),
-            joinedload(ChatConversation.user2),
-            joinedload(ChatConversation.messages)
+            joinedload(ChatConversation.user2)
         ).filter(
             (ChatConversation.user1_id == current_user.id) | 
             (ChatConversation.user2_id == current_user.id)
         ).all()
         
-        # Convert conversations to dict with error handling
+        # Convert conversations to dict with efficient message loading
         result = []
         for conv in conversations:
             try:
-                result.append(conv.to_dict(current_user.id))
+                # Get last message efficiently - limit to recent messages for performance
+                recent_messages = ChatMessage.query.filter_by(
+                    conversation_id=conv.id
+                ).filter(
+                    ChatMessage.is_deleted == False
+                ).order_by(desc(ChatMessage.created_at)).limit(50).all()
+                
+                # Find first message not deleted for current user
+                last_message = None
+                for msg in recent_messages:
+                    if msg.sender_id == current_user.id and msg.deleted_for_sender:
+                        continue
+                    if msg.recipient_id == current_user.id and msg.deleted_for_recipient:
+                        continue
+                    last_message = msg
+                    break
+                
+                # Get unread count efficiently
+                unread_count = ChatMessage.query.filter_by(
+                    conversation_id=conv.id,
+                    recipient_id=current_user.id,
+                    is_read=False
+                ).count()
+                
+                # Determine other user
+                if current_user.id == conv.user1_id:
+                    other_user = conv.user2
+                else:
+                    other_user = conv.user1
+                
+                # Format last message preview
+                last_message_preview = None
+                last_message_time = None
+                if last_message and last_message.content:
+                    try:
+                        import json
+                        content_data = json.loads(last_message.content) if isinstance(last_message.content, str) else last_message.content
+                        if isinstance(content_data, dict) and content_data.get('type') == 'file':
+                            last_message_preview = f"📎 {content_data.get('name', 'File')}"
+                        else:
+                            content_str = str(last_message.content)
+                            last_message_preview = content_str[:50] + ('...' if len(content_str) > 50 else '')
+                    except:
+                        try:
+                            content_str = str(last_message.content) if last_message.content else ''
+                            last_message_preview = content_str[:50] + ('...' if len(content_str) > 50 else '')
+                        except:
+                            last_message_preview = None
+                    
+                    if last_message.created_at:
+                        last_message_time = last_message.created_at.isoformat()
+                
+                # Build result
+                conv_dict = {
+                    'id': conv.id,
+                    'other_user': {
+                        'id': other_user.id,
+                        'name': other_user.name if other_user.name else 'Unknown',
+                        'email': other_user.email if other_user.email else ''
+                    } if other_user else None,
+                    'status': conv.status,
+                    'requested_by': conv.requested_by,
+                    'requested_at': conv.requested_at.isoformat() if conv.requested_at else None,
+                    'accepted_at': conv.accepted_at.isoformat() if conv.accepted_at else None,
+                    'created_at': conv.created_at.isoformat() if conv.created_at else None,
+                    'unread_count': unread_count,
+                    'last_message': last_message_preview,
+                    'last_message_time': last_message_time
+                }
+                result.append(conv_dict)
             except Exception as conv_error:
                 import traceback
                 print(f"[Chat API] Error converting conversation {conv.id} to dict: {str(conv_error)}")
