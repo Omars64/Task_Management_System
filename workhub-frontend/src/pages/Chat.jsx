@@ -76,12 +76,15 @@ const Chat = () => {
       console.log('[Chat] Users response:', usersRes);
       console.log('[Chat] Conversations response:', conversationsRes);
       
-      // Handle response - axios wraps in .data
-      const usersList = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.data || []);
+      // Handle response - axios wraps in .data, ensure we get the array
+      const usersList = Array.isArray(usersRes?.data) ? usersRes.data : [];
       console.log('[Chat] Parsed users list:', usersList.length, usersList);
+      if (usersList.length === 0) {
+        console.warn('[Chat] No users returned from API. Check if there are approved users in the database.');
+      }
       setUsers(usersList);
       
-      const convs = Array.isArray(conversationsRes.data) ? conversationsRes.data : (conversationsRes.data?.data || []);
+      const convs = Array.isArray(conversationsRes?.data) ? conversationsRes.data : [];
       console.log('[Chat] Parsed conversations:', convs.length, convs);
       setConversations(convs);
       
