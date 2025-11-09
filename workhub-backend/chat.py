@@ -264,13 +264,14 @@ def request_chat():
         
         # Eager load user relationships before calling to_dict
         from sqlalchemy.orm import joinedload
+        conversation_id = conversation.id
         conversation = ChatConversation.query.options(
             joinedload(ChatConversation.user1),
             joinedload(ChatConversation.user2)
-        ).get(conversation.id)
+        ).get(conversation_id)
         
         if not conversation:
-            print(f"[Chat API] ERROR: Conversation {conversation.id} not found after creation!")
+            print(f"[Chat API] ERROR: Conversation {conversation_id} not found after creation!")
             return jsonify({'error': 'Failed to create conversation'}), 500
         
         # Create notification for the other user
