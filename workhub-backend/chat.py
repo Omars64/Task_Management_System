@@ -200,6 +200,12 @@ def request_chat():
         if not other_user_id:
             return jsonify({'error': 'user_id is required'}), 400
         
+        # Convert to integer if it's a string
+        try:
+            other_user_id = int(other_user_id)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid user_id format'}), 400
+        
         if other_user_id == current_user.id:
             return jsonify({'error': 'Cannot chat with yourself'}), 400
         
