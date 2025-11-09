@@ -102,6 +102,22 @@ class VerificationService:
         Returns:
             True if successful, False otherwise
         """
+        if not mail:
+            print(f"✗ Mail instance not available - cannot send email to {email}")
+            return False
+        
+        # Verify mail configuration
+        from flask import current_app
+        app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
+        mail_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
+        mail_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
+        
+        if not mail_username or not mail_password:
+            print(f"✗ Mail credentials not configured - cannot send email to {email}")
+            print(f"   MAIL_USERNAME: {'SET' if mail_username else 'NOT SET'}")
+            print(f"   MAIL_PASSWORD: {'SET' if mail_password else 'NOT SET'}")
+            return False
+        
         msg = Message(
             subject="Verify Your Email - WorkHub",
             recipients=[email],
