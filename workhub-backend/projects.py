@@ -117,11 +117,13 @@ def get_project(project_id):
         data['tasks'] = [t.to_dict() for t in tasks]
         data['assignees'] = assignees
         data['members'] = membership
+        # Count tasks by status efficiently (already loaded in memory)
+        # This is acceptable since tasks are already loaded for display
         data['task_counts'] = {
             'total': len(tasks),
-            'todo': len([t for t in tasks if t.status == 'todo']),
-            'in_progress': len([t for t in tasks if t.status == 'in_progress']),
-            'completed': len([t for t in tasks if t.status == 'completed'])
+            'todo': sum(1 for t in tasks if t.status == 'todo'),
+            'in_progress': sum(1 for t in tasks if t.status == 'in_progress'),
+            'completed': sum(1 for t in tasks if t.status == 'completed')
         }
         return jsonify(data), 200
     except Exception as e:
