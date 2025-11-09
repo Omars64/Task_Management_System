@@ -166,6 +166,7 @@ export const notificationsAPI = {
   markAllAsRead: () => api.put('/notifications/mark-all-read'),
   delete: (id) => api.delete(`/notifications/${id}`),
   clearAll: () => api.delete('/notifications/clear-all'),
+  resolve: (id) => api.post(`/notifications/${id}/resolve`),
   getPreferences: () => api.get('/notifications/preferences'),
   updatePreferences: (data) => api.put('/notifications/preferences', data),
   getProjectActivity: (projectId, limit = 50) => api.get('/notifications/project-activity', { params: { project_id: projectId, limit } }),

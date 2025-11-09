@@ -1,9 +1,11 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, Notification, NotificationPreference, User, Task
+from models import db, Notification, NotificationPreference, User, Task, Comment, ChatConversation, Project, ProjectMember
 from email_service import email_service
+from permissions import Permission
 import logging
 import threading
+from urllib.parse import urlencode
 
 logger = logging.getLogger(__name__)
 
@@ -381,3 +383,133 @@ def update_notification_preferences():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+
+@notifications_bp.route('/<int:notification_id>/resolve', methods=['POST'])
+@jwt_required()
+def resolve_notification(notification_id):
+    """
+    Resolve a notification: mark as read, verify access, and return redirect URL
+    
+    Returns:
+        {
+            "redirect_url": "/tasks/123?origin=notif&notifId=456&tab=activity&commentId=789",
+            "error": null
+        }
+        OR
+        {
+            "redirect_url": null,
+            "error": "Task not found or access denied"
+        }
+    """
+    try:
+        current_user_id = int(get_jwt_identity())
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user:
+            return jsonify({'error': 'User not found', 'redirect_url': None}), 404
+        
+        # Get notification
+        notification = Notification.query.get(notification_id)
+        if not notification:
+            return jsonify({'error': 'Notification not found', 'redirect_url': None}), 404
+        
+        # Verify notification belongs to current user
+        if notification.user_id != current_user_id:
+            return jsonify({'error': 'Access denied', 'redirect_url': None}), 403
+        
+        # Mark as read
+        notification.is_read = True
+        db.session.commit()
+        
+        # Build redirect URL based on notification type
+        redirect_url = None
+        error = None
+        
+        # Task-related notifications
+        if notification.related_task_id:
+            task = Task.query.get(notification.related_task_id)
+            if not task:
+                error = 'Task not found'
+            else:
+                # Check access: user has TASKS_READ permission OR is assignee
+                has_access = (
+                    current_user.has_permission(Permission.TASKS_READ) or 
+                    task.assigned_to == current_user_id
+                )
+                
+                # Also check if user is project member (for managers/team leads)
+                if not has_access and task.project_id:
+                    role = (current_user.role or 'viewer').lower()
+                    if role in ('manager', 'team_lead'):
+                        is_member = ProjectMember.query.filter_by(
+                            project_id=task.project_id, 
+                            user_id=current_user_id
+                        ).first() is not None
+                        if is_member:
+                            has_access = True
+                
+                if not has_access:
+                    error = 'Access denied to this task'
+                else:
+                    # Build URL with query parameters
+                    params = {
+                        'origin': 'notif',
+                        'notifId': str(notification_id)
+                    }
+                    
+                    # For comment notifications, add tab and commentId
+                    if notification.type == 'comment':
+                        params['tab'] = 'activity'
+                        # Try to find the most recent comment for this task
+                        # (We don't store comment_id in notification yet, so use latest)
+                        comment = Comment.query.filter_by(task_id=task.id).order_by(Comment.created_at.desc()).first()
+                        if comment:
+                            params['commentId'] = str(comment.id)
+                    
+                    query_string = urlencode(params)
+                    redirect_url = f"/tasks?taskId={task.id}&{query_string}"
+        
+        # Chat-related notifications
+        elif notification.related_conversation_id:
+            conversation = ChatConversation.query.get(notification.related_conversation_id)
+            if not conversation:
+                error = 'Conversation not found'
+            else:
+                # Verify user is part of conversation
+                if conversation.user1_id != current_user_id and conversation.user2_id != current_user_id:
+                    error = 'Access denied to this conversation'
+                else:
+                    params = {
+                        'origin': 'notif',
+                        'notifId': str(notification_id)
+                    }
+                    query_string = urlencode(params)
+                    redirect_url = f"/chat?conversationId={conversation.id}&{query_string}"
+        
+        # Project-related notifications (if we add project_id to notifications later)
+        # For now, project notifications might be linked via task.project_id
+        
+        # Meeting-related notifications (if we add meeting_id to notifications later)
+        
+        # If no redirect URL could be determined, return error
+        if not redirect_url:
+            if not error:
+                error = 'No valid target found for this notification'
+            return jsonify({
+                'error': error,
+                'redirect_url': None
+            }), 404
+        
+        return jsonify({
+            'redirect_url': redirect_url,
+            'error': None
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error resolving notification {notification_id}: {str(e)}")
+        return jsonify({
+            'error': f'Failed to resolve notification: {str(e)}',
+            'redirect_url': None
+        }), 500

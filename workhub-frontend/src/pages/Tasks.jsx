@@ -85,6 +85,38 @@ const Tasks = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Handle deep-linking: check for taskId in URL after tasks are loaded
+  useEffect(() => {
+    if (loading || !tasks.length) return; // Wait for tasks to load
+    
+    const params = new URLSearchParams(window.location.search);
+    const taskId = params.get('taskId');
+    const origin = params.get('origin');
+    
+    // Only process deep-link if origin is 'notif' or taskId is present
+    if (taskId && origin === 'notif' && !showTaskDetail) {
+      const taskIdNum = Number(taskId);
+      if (Number.isFinite(taskIdNum) && taskIdNum > 0) {
+        // Find task in current list or fetch it
+        const existingTask = tasks.find(t => t.id === taskIdNum);
+        if (existingTask) {
+          handleViewDetails(existingTask);
+        } else {
+          // Task not in current list, fetch it
+          tasksAPI.getById(taskIdNum)
+            .then(response => {
+              handleViewDetails(response.data);
+            })
+            .catch(error => {
+              console.error('Failed to fetch task for deep-link:', error);
+              addToast('Task not found', { type: 'error' });
+            });
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, loading]);
+
   // Sync URL with filters and pagination
   useEffect(() => {
     const params = new URLSearchParams();
@@ -496,6 +528,30 @@ const Tasks = () => {
       // Fetch attachments for this task
       fetchAttachments(task.id);
       setLoadingTaskDetail(false);
+      
+      // Handle deep-linking: scroll to comment if commentId is in URL
+      setTimeout(() => {
+        const params = new URLSearchParams(window.location.search);
+        const commentId = params.get('commentId');
+        if (commentId) {
+          const commentIdNum = Number(commentId);
+          if (Number.isFinite(commentIdNum) && commentIdNum > 0) {
+            // Scroll to comment after a short delay to ensure DOM is ready
+            setTimeout(() => {
+              const commentElement = document.getElementById(`comment-${commentIdNum}`);
+              if (commentElement) {
+                commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Highlight the comment briefly
+                commentElement.style.backgroundColor = '#fef3c7';
+                commentElement.style.transition = 'background-color 0.3s ease';
+                setTimeout(() => {
+                  commentElement.style.backgroundColor = '';
+                }, 2000);
+              }
+            }, 300);
+          }
+        }
+      }, 100);
     } catch (error) {
       console.error('Failed to fetch task details:', error);
       showError(error.response?.data?.error || 'Failed to load task details', 'Error');
@@ -1256,7 +1312,12 @@ const Tasks = () => {
                       .filter(c => !c.parent_comment_id)
                       .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
                       .map(comment => (
-                        <div key={comment.id} className="comment" style={{ border:'1px solid var(--border-color)', borderRadius:8, padding:12 }}>
+                        <div 
+                          key={comment.id} 
+                          id={`comment-${comment.id}`}
+                          className="comment" 
+                          style={{ border:'1px solid var(--border-color)', borderRadius:8, padding:12 }}
+                        >
                           <div className="comment-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
                             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                               <strong>{comment.user_name}</strong>
