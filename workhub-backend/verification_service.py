@@ -330,51 +330,58 @@ class VerificationService:
     @staticmethod
     def send_rejection_email(user, reason, mail):
         """Send email to user when their signup is rejected"""
-        msg = Message(
-            subject="Account Signup Update - WorkHub",
-            recipients=[user.email],
-            html=f"""
-            <html>
-                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                    <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
-                        <h2 style="color: #dc2626;">Account Signup Update</h2>
-                        <p>Hi {user.name},</p>
-                        <p>Unfortunately, your WorkHub account signup was not approved.</p>
-                        
-                        {f'<div style="background-color: #fef2f2; padding: 15px; margin: 20px 0; border-left: 4px solid #dc2626;"><p style="margin: 0;"><strong>Reason:</strong> {reason}</p></div>' if reason else ''}
-                        
-                        <p>If you believe this was a mistake or have questions, please contact the administrator.</p>
-                        
-                        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-                        <p style="color: #999; font-size: 12px; text-align: center;">
-                            WorkHub Task Management System<br>
-                            This is an automated email, please do not reply.
-                        </p>
-                    </div>
-                </body>
-            </html>
-            """,
-            body=f"""
-            Account Signup Update
-            
-            Hi {user.name},
-            
-            Unfortunately, your WorkHub account signup was not approved.
-            
-            {f'Reason: {reason}' if reason else ''}
-            
-            If you believe this was a mistake or have questions, please contact the administrator.
-            
-            ---
-            WorkHub Task Management System
-            """
-        )
+        if not mail:
+            print("⚠ Mail instance not available - cannot send rejection email")
+            return False
         
         try:
+            msg = Message(
+                subject="Account Signup Update - WorkHub",
+                recipients=[user.email],
+                html=f"""
+                <html>
+                    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+                            <h2 style="color: #dc2626;">Account Signup Update</h2>
+                            <p>Hi {user.name},</p>
+                            <p>Unfortunately, your WorkHub account signup was not approved.</p>
+                            
+                            {f'<div style="background-color: #fef2f2; padding: 15px; margin: 20px 0; border-left: 4px solid #dc2626;"><p style="margin: 0;"><strong>Reason:</strong> {reason}</p></div>' if reason else ''}
+                            
+                            <p>If you believe this was a mistake or have questions, please contact the administrator.</p>
+                            
+                            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+                            <p style="color: #999; font-size: 12px; text-align: center;">
+                                WorkHub Task Management System<br>
+                                This is an automated email, please do not reply.
+                            </p>
+                        </div>
+                    </body>
+                </html>
+                """,
+                body=f"""
+                Account Signup Update
+                
+                Hi {user.name},
+                
+                Unfortunately, your WorkHub account signup was not approved.
+                
+                {f'Reason: {reason}' if reason else ''}
+                
+                If you believe this was a mistake or have questions, please contact the administrator.
+                
+                ---
+                WorkHub Task Management System
+                """
+            )
+            
             mail.send(msg)
+            print(f"✓ Rejection email sent successfully to {user.email}")
             return True
         except Exception as e:
-            print(f"Error sending rejection email: {e}")
+            print(f"✗ Error sending rejection email to {user.email}: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
 
