@@ -597,8 +597,15 @@ class ChatConversation(db.Model):
         # Get the last message for preview
         # Messages are already sorted by created_at (asc) from relationship order_by
         # So we iterate in reverse to get the most recent
+        # Safely access messages - may trigger lazy load, but that's acceptable for new conversations
         last_message = None
-        if self.messages:
+        try:
+            messages_list = list(self.messages) if self.messages else []
+        except Exception:
+            # If messages relationship can't be loaded, skip message preview
+            messages_list = []
+        
+        if messages_list:
             # Iterate in reverse since relationship is ordered by created_at (ascending)
             # This avoids Python sorting - messages are already ordered by DB
             for msg in reversed(messages_list):
