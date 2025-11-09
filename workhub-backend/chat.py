@@ -48,9 +48,14 @@ def get_users():
             return jsonify({'error': 'Unauthorized'}), 401
         
         # Only return users who are approved (includes admin-created users)
+        # Handle NULL signup_status as 'approved' (for users created before signup_status field existed)
+        from sqlalchemy import or_
         users = User.query.filter(
             User.id != current_user.id,
-            User.signup_status == 'approved'
+            or_(
+                User.signup_status == 'approved',
+                User.signup_status.is_(None)  # Treat NULL as approved (legacy users)
+            )
         ).all()
         
         users_list = [{

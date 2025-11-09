@@ -177,6 +177,8 @@ def register():
             name=data["name"],
             email=data["email"],
             role=data["role"],
+            signup_status='approved',  # Admin-created users are auto-approved
+            email_verified=True  # Admin-created users don't need email verification
         )
         user.set_password(data["password"])
         db.session.add(user)
