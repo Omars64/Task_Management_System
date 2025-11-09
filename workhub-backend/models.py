@@ -601,7 +601,7 @@ class ChatConversation(db.Model):
         if self.messages:
             # Iterate in reverse since relationship is ordered by created_at (ascending)
             # This avoids Python sorting - messages are already ordered by DB
-            for msg in reversed(self.messages):
+            for msg in reversed(messages_list):
                 # Skip messages deleted for current user
                 if current_user_id:
                     if msg.sender_id == current_user_id and getattr(msg, 'deleted_for_sender', False):
@@ -635,9 +635,9 @@ class ChatConversation(db.Model):
         
         # Calculate unread count safely
         unread_count = 0
-        if current_user_id and self.messages:
+        if current_user_id and messages_list:
             try:
-                unread_count = len([m for m in self.messages 
+                unread_count = len([m for m in messages_list 
                                   if getattr(m, 'recipient_id', None) == current_user_id 
                                   and not getattr(m, 'is_read', False)])
             except:

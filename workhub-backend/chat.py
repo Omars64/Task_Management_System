@@ -268,9 +268,15 @@ def request_chat():
         return jsonify({'message': 'Chat request sent', 'conversation': conversation.to_dict(current_user.id)}), 201
     except SQLAlchemyError as e:
         db.session.rollback()
+        import traceback
+        print(f"[Chat API] SQLAlchemy error in request_chat: {str(e)}")
+        traceback.print_exc()
         return jsonify({'error': 'Database error occurred.'}), 500
     except Exception as e:
         db.session.rollback()
+        import traceback
+        print(f"[Chat API] Error in request_chat: {str(e)}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
