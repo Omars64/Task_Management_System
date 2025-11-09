@@ -20,19 +20,50 @@ class Config:
     # Determine DB_HOST based on environment
     # Priority: DB_HOST env var > CLOUD_SQL_CONNECTION_NAME > localhost
     # Note: pymssql doesn't support Unix sockets, so we always use TCP/IP
+    # ENFORCEMENT: Application MUST use private IP (10.119.176.3) in production
     explicit_db_host = os.environ.get('DB_HOST')
+    
+    # Check if we're in production (Cloud Run environment)
+    is_production = os.environ.get('FLASK_ENV') == 'production' or os.environ.get('GCP_PROJECT') is not None
+    
     if explicit_db_host:
-        # Safety check: If public IP is detected, automatically use private IP
-        # Cloud SQL Private IP for workhub-db: 10.119.176.3
-        # Public IP (should not be used): 34.31.203.11
+        # STRICT ENFORCEMENT: Block public IP usage in production
         if explicit_db_host == '34.31.203.11':
-            # Automatically switch to private IP for Cloud SQL
-            DB_HOST = '10.119.176.3'
-            import warnings
-            warnings.warn("DB_HOST was set to public IP (34.31.203.11). Automatically using private IP (10.119.176.3) for secure connection.")
+            if is_production:
+                # In production, fail fast if public IP is detected
+                import sys
+                error_msg = (
+                    "ERROR: Public IP (34.31.203.11) detected in production environment!\n"
+                    "This will cause SLOW performance and security issues.\n"
+                    "Application MUST use private IP (10.119.176.3) in production.\n"
+                    "Please update DB_HOST environment variable to 10.119.176.3"
+                )
+                print(error_msg, file=sys.stderr)
+                raise ValueError("Public IP cannot be used in production. Use private IP (10.119.176.3)")
+            else:
+                # In development, automatically switch to private IP with warning
+                DB_HOST = '10.119.176.3'
+                import warnings
+                import sys
+                warnings.warn("DB_HOST was set to public IP (34.31.203.11). Automatically using private IP (10.119.176.3) for better performance and security.", 
+                            UserWarning)
+                print("WARNING: DB_HOST was set to public IP. Switched to private IP (10.119.176.3) for optimal performance.", file=sys.stderr)
         else:
-            # Use explicit DB_HOST (e.g., private IP for Cloud SQL)
+            # Use explicit DB_HOST
             DB_HOST = explicit_db_host
+            
+            # Validate private IP in production
+            if is_production and DB_HOST not in ['10.119.176.3', 'localhost', '127.0.0.1', 'database', 'host.docker.internal']:
+                import sys
+                print(f"WARNING: Using DB_HOST={DB_HOST} in production. Ensure this is the private IP for optimal performance.", file=sys.stderr)
+            
+            # Log the DB_HOST being used for debugging
+            if DB_HOST not in ['localhost', '127.0.0.1', 'database', 'host.docker.internal']:
+                import sys
+                if DB_HOST == '10.119.176.3':
+                    print(f"[INFO] Using PRIVATE IP: {DB_HOST} (Optimal for production)", file=sys.stderr)
+                else:
+                    print(f"[INFO] Using DB_HOST: {DB_HOST}", file=sys.stderr)
         DB_PORT = os.environ.get('DB_PORT', '1433')
     elif CLOUD_SQL_CONNECTION_NAME:
         # Fallback: if CLOUD_SQL_CONNECTION_NAME is set but DB_HOST is not,

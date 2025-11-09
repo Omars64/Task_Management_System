@@ -128,7 +128,7 @@ gcloud run deploy $BACKEND_SERVICE \
     --timeout 300 \
     --set-cloudsql-instances $CLOUD_SQL_CONNECTION \
     --set-secrets DB_PASSWORD=workhub-db-password:latest,SECRET_KEY=workhub-secret-key:latest,JWT_SECRET_KEY=workhub-jwt-secret:latest,MAIL_PASSWORD=workhub-mail-password:latest \
-    --set-env-vars CLOUD_SQL_CONNECTION_NAME=$CLOUD_SQL_CONNECTION,DB_NAME=workhub,DB_USER=sqlserver,DB_DIALECT=mssql,USE_CLOUD_STORAGE=true,CLOUD_STORAGE_BUCKET=$STORAGE_BUCKET,GCP_PROJECT=$PROJECT_ID,EMAIL_NOTIFICATIONS_ENABLED=true \
+    --set-env-vars CLOUD_SQL_CONNECTION_NAME=$CLOUD_SQL_CONNECTION,DB_HOST=10.119.176.3,DB_PORT=1433,DB_NAME=workhub,DB_USER=sqlserver,DB_DIALECT=mssql,USE_CLOUD_STORAGE=true,CLOUD_STORAGE_BUCKET=$STORAGE_BUCKET,GCP_PROJECT=$PROJECT_ID,FLASK_ENV=production,EMAIL_NOTIFICATIONS_ENABLED=true \
     --service-account $SERVICE_ACCOUNT_EMAIL
 
 echo -e "${GREEN}✓ Backend deployed${NC}"
