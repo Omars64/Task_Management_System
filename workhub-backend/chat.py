@@ -41,21 +41,15 @@ def _get_current_user():
 @chat_bp.route('/users', methods=['GET'])
 @jwt_required()
 def get_users():
-    """Get all approved users for chat (excluding current user) - includes admin-created users"""
+    """Get all users for chat (excluding current user) - allows all users to chat"""
     try:
         current_user = _get_current_user()
         if not current_user:
             return jsonify({'error': 'Unauthorized'}), 401
         
-        # Only return users who are approved (includes admin-created users)
-        # Handle NULL signup_status as 'approved' (for users created before signup_status field existed)
-        from sqlalchemy import or_
+        # Return ALL users except current user - no restrictions
         users = User.query.filter(
-            User.id != current_user.id,
-            or_(
-                User.signup_status == 'approved',
-                User.signup_status.is_(None)  # Treat NULL as approved (legacy users)
-            )
+            User.id != current_user.id
         ).all()
         
         users_list = [{
@@ -66,7 +60,7 @@ def get_users():
         } for u in users]
         
         # Log for debugging
-        print(f"[Chat API] Returning {len(users_list)} approved users (excluding user {current_user.id})")
+        print(f"[Chat API] Returning {len(users_list)} users (excluding user {current_user.id})")
         
         return jsonify(users_list), 200
     except Exception as e:
@@ -213,10 +207,7 @@ def request_chat():
         if not other_user:
             return jsonify({'error': 'User not found'}), 404
         
-        # Validate that the user is approved (includes admin-created users and legacy users with NULL signup_status)
-        if other_user.signup_status not in ('approved', None):
-            return jsonify({'error': 'Cannot chat with this user. User account is not approved.'}), 400
-        
+        # No restrictions - all users can chat with each other
         # Check if conversation already exists
         existing = ChatConversation.query.filter(
             ((ChatConversation.user1_id == current_user.id) & (ChatConversation.user2_id == other_user_id)) |
@@ -224,16 +215,18 @@ def request_chat():
         ).first()
         
         if existing:
+            # Eager load user relationships before calling to_dict
+            from sqlalchemy.orm import joinedload
+            existing = ChatConversation.query.options(
+                joinedload(ChatConversation.user1),
+                joinedload(ChatConversation.user2)
+            ).get(existing.id)
+            
             if existing.status == 'accepted':
-                # Eager load user relationships before calling to_dict
-                from sqlalchemy.orm import joinedload
-                existing = ChatConversation.query.options(
-                    joinedload(ChatConversation.user1),
-                    joinedload(ChatConversation.user2)
-                ).get(existing.id)
                 return jsonify({'message': 'Conversation already exists', 'conversation': existing.to_dict(current_user.id)}), 200
             elif existing.status == 'pending':
-                return jsonify({'error': 'Chat request already pending'}), 400
+                # Return the existing pending conversation instead of error
+                return jsonify({'message': 'Chat request already pending', 'conversation': existing.to_dict(current_user.id)}), 200
             elif existing.status == 'rejected':
                 # Allow creating a new request after rejection - delete the old rejected conversation
                 db.session.delete(existing)

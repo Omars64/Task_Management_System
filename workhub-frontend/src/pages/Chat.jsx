@@ -168,11 +168,24 @@ const Chat = () => {
 
   const handleRequestChat = async (userId) => {
     try {
-      await chatAPI.requestChat(userId);
+      const response = await chatAPI.requestChat(userId);
       showSuccess('Chat request sent!');
-      fetchData();
+      // Immediately refresh to show the pending status
+      await fetchData();
+      // If conversation was returned, update the conversations list
+      if (response?.data?.conversation) {
+        setConversations(prev => {
+          const existing = prev.find(c => c.id === response.data.conversation.id);
+          if (existing) {
+            return prev.map(c => c.id === response.data.conversation.id ? response.data.conversation : c);
+          }
+          return [...prev, response.data.conversation];
+        });
+      }
     } catch (error) {
-      showError(error.response?.data?.error || 'Failed to send chat request', 'Chat Request Error');
+      console.error('[Chat] Error sending chat request:', error);
+      const errorMsg = error.response?.data?.error || error.message || 'Failed to send chat request';
+      showError(errorMsg, 'Chat Request Error');
     }
   };
 
