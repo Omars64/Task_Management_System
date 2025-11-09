@@ -307,26 +307,78 @@ const Tasks = () => {
     const taskId = selectedTask?.id;
     const taskToEdit = selectedTask ? { ...selectedTask } : null;
 
-    // Optimistic UI: Clear form and close modal immediately for better UX
+    // Show toast immediately for better UX
+    if (isEdit) {
+      addToast('Updating task...', { type: 'info', timeout: 3000 });
+    } else {
+      addToast('Creating task...', { type: 'info', timeout: 3000 });
+    }
+
+    // Optimistic UI: Clear form and close modal immediately
     setShowModal(false);
     resetForm();
+
+    // For create: Add optimistic task to list immediately
+    let optimisticTaskId = null;
+    if (!isEdit) {
+      optimisticTaskId = `temp-${Date.now()}`;
+      const optimisticTask = {
+        id: optimisticTaskId,
+        title: taskData.title,
+        description: taskData.description || '',
+        priority: taskData.priority,
+        status: taskData.status || 'todo',
+        assigned_to: taskData.assigned_to || null,
+        due_date: taskData.due_date || null,
+        project_id: taskData.project_id || null,
+        sprint_id: taskData.sprint_id || null,
+        created_by: user?.id || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_optimistic: true // Flag to identify optimistic tasks
+      };
+      setTasks(prev => [optimisticTask, ...prev]);
+    }
 
     try {
       if (isEdit) {
         await tasksAPI.update(taskId, taskData);
         addToast('Task updated successfully', { type: 'success' });
+        // Refresh tasks to get updated data
+        fetchTasks();
       } else {
-        await tasksAPI.create(taskData);
+        const response = await tasksAPI.create(taskData);
+        // API returns: { message: '...', task: {...} }
+        const createdTask = response.data?.task;
+        
+        // Remove optimistic task
+        if (optimisticTaskId) {
+          setTasks(prev => prev.filter(t => t.id !== optimisticTaskId));
+        }
+        
         addToast('Task created successfully', { type: 'success' });
+        
+        // Refresh to get the real task with all relationships (assignee names, etc.)
+        // This ensures we have complete data
+        fetchTasks();
       }
-      fetchTasks();
     } catch (error) {
+      // Remove optimistic task on error
+      if (optimisticTaskId) {
+        setTasks(prev => prev.filter(t => t.id !== optimisticTaskId));
+      }
+      
       const errorData = error.response?.data;
       addToast(errorData?.error || 'Failed to save task', { type: 'error' });
+      
       // Reopen modal with form data if edit failed, or just show error for create
       if (isEdit && taskToEdit) {
         setFormData(taskData);
         setSelectedTask(taskToEdit);
+        setShowModal(true);
+      } else if (!isEdit) {
+        // For create, reopen modal so user can retry
+        setFormData(taskData);
         setShowModal(true);
       }
     }

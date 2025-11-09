@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Notification, NotificationPreference, User, Task
 from email_service import email_service
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -103,27 +104,36 @@ def create_notification_with_email(user_id, title, message, notif_type, related_
                                 'task_url': f"{base_url}/tasks?taskId={task.id if hasattr(task, 'id') else related_task_id}"
                             }
                     
-                    # Send appropriate email based on notification type
-                    if notif_type == 'task_assigned' and task_data:
-                        email_service.send_task_assigned(user.email, task_data)
-                    elif notif_type == 'task_updated' and task_data:
-                        # Extract changes from message (simplified)
-                        email_service.send_task_updated(user.email, task_data, {})
-                    elif notif_type == 'comment' and task_data:
-                        # Extract comment data from message
-                        comment_data = {'author_name': 'A user', 'content': message}
-                        email_service.send_comment_notification(user.email, task_data, comment_data)
-                    elif notif_type == 'task_due_soon' and task_data:
-                        email_service.send_task_due_soon(user.email, task_data)
-                    elif notif_type == 'task_overdue' and task_data:
-                        email_service.send_task_overdue(user.email, task_data)
-                    elif notif_type in ('meeting_invitation', 'meeting_response'):
-                        # Meeting notifications - message contains the meeting info
-                        email_service.send_generic_notification(
-                            user.email, 
-                            title, 
-                            message
-                        )
+                    # Send email in background thread to avoid blocking the API response
+                    def send_email_async():
+                        try:
+                            # Send appropriate email based on notification type
+                            if notif_type == 'task_assigned' and task_data:
+                                email_service.send_task_assigned(user.email, task_data)
+                            elif notif_type == 'task_updated' and task_data:
+                                # Extract changes from message (simplified)
+                                email_service.send_task_updated(user.email, task_data, {})
+                            elif notif_type == 'comment' and task_data:
+                                # Extract comment data from message
+                                comment_data = {'author_name': 'A user', 'content': message}
+                                email_service.send_comment_notification(user.email, task_data, comment_data)
+                            elif notif_type == 'task_due_soon' and task_data:
+                                email_service.send_task_due_soon(user.email, task_data)
+                            elif notif_type == 'task_overdue' and task_data:
+                                email_service.send_task_overdue(user.email, task_data)
+                            elif notif_type in ('meeting_invitation', 'meeting_response'):
+                                # Meeting notifications - message contains the meeting info
+                                email_service.send_generic_notification(
+                                    user.email, 
+                                    title, 
+                                    message
+                                )
+                        except Exception as e:
+                            logger.error(f"Error sending email in background: {str(e)}")
+                    
+                    # Start email sending in background thread
+                    thread = threading.Thread(target=send_email_async, daemon=True)
+                    thread.start()
         
         return notification
     
