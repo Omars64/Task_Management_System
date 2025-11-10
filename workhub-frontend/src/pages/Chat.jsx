@@ -282,12 +282,7 @@ const Chat = () => {
   };
 
   const handleSelectConversation = (conversation) => {
-    // Allow selecting pending conversations so User B can see and accept/reject requests
-    if (conversation.status === 'pending') {
-      setSelectedConversation(conversation);
-      setMessages([]); // Clear messages for pending conversations
-      return;
-    }
+    // Only allow selecting accepted conversations (like WhatsApp - simple and direct)
     if (conversation.status !== 'accepted') {
       showError('Conversation not accepted yet', 'Error');
       return;

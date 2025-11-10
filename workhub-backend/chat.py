@@ -457,13 +457,7 @@ def get_messages(conversation_id):
         if not current_user:
             return jsonify({'error': 'Unauthorized'}), 401
         
-        # Eager load conversation with relationships
-        from sqlalchemy.orm import joinedload
-        conversation = ChatConversation.query.options(
-            joinedload(ChatConversation.user1),
-            joinedload(ChatConversation.user2)
-        ).get(conversation_id)
-        
+        conversation = ChatConversation.query.get(conversation_id)
         if not conversation:
             return jsonify({'error': 'Conversation not found'}), 404
         
@@ -476,131 +470,35 @@ def get_messages(conversation_id):
             return jsonify([]), 200
         
         # Eager load messages with all relationships to prevent lazy loading errors
-        try:
-            messages = ChatMessage.query.options(
-                joinedload(ChatMessage.sender),
-                joinedload(ChatMessage.recipient),
-                joinedload(ChatMessage.reply_to).joinedload(ChatMessage.sender)
-            ).filter_by(
-                conversation_id=conversation_id
-            ).order_by(ChatMessage.created_at.asc()).all()
-        except Exception as messages_load_error:
-            print(f"[Chat API] Error loading messages: {messages_load_error}")
-            import traceback
-            traceback.print_exc()
-            # Return empty array instead of failing
-            return jsonify([]), 200
+        # This is the key: load all relationships upfront like the model's to_dict() expects
+        from sqlalchemy.orm import joinedload, selectinload
+        messages = ChatMessage.query.options(
+            joinedload(ChatMessage.sender),
+            joinedload(ChatMessage.recipient),
+            joinedload(ChatMessage.reply_to).joinedload(ChatMessage.sender),
+            selectinload(ChatMessage.reactions).joinedload(MessageReaction.user)
+        ).filter_by(
+            conversation_id=conversation_id
+        ).order_by(ChatMessage.created_at.asc()).all()
         
-        # Load reactions separately to avoid relationship issues
-        reactions_map = {}
-        if messages:
-            try:
-                message_ids = [msg.id for msg in messages]
-                if message_ids:
-                    reactions = MessageReaction.query.filter(
-                        MessageReaction.message_id.in_(message_ids)
-                    ).all()
-                    for reaction in reactions:
-                        if reaction.message_id not in reactions_map:
-                            reactions_map[reaction.message_id] = []
-                        reactions_map[reaction.message_id].append(reaction)
-            except Exception as reactions_load_error:
-                print(f"[Chat API] Error loading reactions: {reactions_load_error}")
-                import traceback
-                traceback.print_exc()
-                # Continue without reactions - don't fail the entire request
-        
-        # Filter out messages that are hidden for current user and serialize safely
+        # Filter out messages that are hidden for current user
         filtered_messages = []
         for msg in messages:
+            # Skip if deleted for this specific user
+            if msg.sender_id == current_user.id and msg.deleted_for_sender:
+                continue
+            if msg.recipient_id == current_user.id and msg.deleted_for_recipient:
+                continue
+            if msg.is_deleted:
+                continue
+            
+            # Use the model's to_dict() method - it works when relationships are loaded
             try:
-                # Skip if deleted for this specific user
-                if msg.sender_id == current_user.id and getattr(msg, 'deleted_for_sender', False):
-                    continue
-                if msg.recipient_id == current_user.id and getattr(msg, 'deleted_for_recipient', False):
-                    continue
-                if getattr(msg, 'is_deleted', False):
-                    continue
-                
-                # Safely serialize message
-                msg_dict = {
-                    'id': msg.id,
-                    'conversation_id': msg.conversation_id,
-                    'sender_id': msg.sender_id,
-                    'sender_name': getattr(msg.sender, 'name', 'Unknown') if msg.sender else 'Unknown',
-                    'recipient_id': msg.recipient_id,
-                    'content': str(msg.content) if msg.content else '',
-                    'delivery_status': msg.delivery_status or 'sent',
-                    'is_read': getattr(msg, 'is_read', False),
-                    'read_at': msg.read_at.isoformat() if hasattr(msg, 'read_at') and msg.read_at else None,
-                    'created_at': msg.created_at.isoformat() if msg.created_at else None,
-                    'updated_at': msg.updated_at.isoformat() if hasattr(msg, 'updated_at') and msg.updated_at else None,
-                    'is_edited': getattr(msg, 'is_edited', False),
-                    'is_deleted': getattr(msg, 'is_deleted', False),
-                    'reply_to': None,
-                    'reactions': []
-                }
-                
-                # Handle reply_to safely
-                if msg.reply_to_id and msg.reply_to:
-                    try:
-                        reply_content = msg.reply_to.content or ''
-                        # Try to parse JSON for file attachments
-                        try:
-                            import json
-                            reply_data = json.loads(reply_content) if isinstance(reply_content, str) else reply_content
-                            if isinstance(reply_data, dict) and reply_data.get('type') == 'file':
-                                reply_content = f"📎 {reply_data.get('name', 'File')}"
-                            else:
-                                reply_content = reply_content[:30] + ('...' if len(reply_content) > 30 else '')
-                        except:
-                            reply_content = reply_content[:30] + ('...' if len(reply_content) > 30 else '')
-                        
-                        msg_dict['reply_to'] = {
-                            'id': msg.reply_to.id,
-                            'content': reply_content,
-                            'sender_name': msg.reply_to.sender.name if msg.reply_to.sender else 'Unknown'
-                        }
-                    except Exception as reply_error:
-                        print(f"[Chat API] Error processing reply_to for message {msg.id}: {reply_error}")
-                        msg_dict['reply_to'] = None
-                
-                # Handle reactions safely - use pre-loaded reactions map
-                try:
-                    msg_dict['reactions'] = []
-                    if msg.id in reactions_map:
-                        for reaction in reactions_map[msg.id]:
-                            try:
-                                # Get user name safely
-                                user_name = 'Unknown'
-                                try:
-                                    reaction_user = User.query.get(reaction.user_id)
-                                    if reaction_user:
-                                        user_name = reaction_user.name or 'Unknown'
-                                except:
-                                    pass
-                                
-                                reaction_dict = {
-                                    'id': reaction.id,
-                                    'message_id': reaction.message_id,
-                                    'user_id': reaction.user_id,
-                                    'user_name': user_name,
-                                    'emoji': reaction.emoji if reaction.emoji else '',
-                                    'created_at': reaction.created_at.isoformat() if hasattr(reaction, 'created_at') and reaction.created_at else None
-                                }
-                                msg_dict['reactions'].append(reaction_dict)
-                            except Exception as react_error:
-                                print(f"[Chat API] Error processing reaction {reaction.id}: {react_error}")
-                                continue
-                except Exception as reactions_error:
-                    print(f"[Chat API] Error loading reactions for message {msg.id}: {reactions_error}")
-                    msg_dict['reactions'] = []
-                
-                filtered_messages.append(msg_dict)
-            except Exception as msg_error:
-                # Skip messages that can't be serialized
+                filtered_messages.append(msg.to_dict())
+            except Exception as e:
+                # If to_dict() fails, skip this message but log the error
+                print(f"[Chat API] Error calling to_dict() for message {msg.id}: {str(e)}")
                 import traceback
-                print(f"[Chat API] Error serializing message {msg.id}: {str(msg_error)}")
                 traceback.print_exc()
                 continue
         
