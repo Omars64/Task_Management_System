@@ -294,6 +294,62 @@ def _do_init():
     except Exception as e:
         print(f"⚠ Warning adding notifications column: {e}")
     
+    # Ensure all chat_messages columns exist (migration for existing tables)
+    print("\nEnsuring all chat_messages columns exist...")
+    try:
+        with db.engine.begin() as conn:
+            # Check and add reply_to_id if missing
+            result = conn.execute(text("""
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='chat_messages' AND COLUMN_NAME='reply_to_id'
+            """))
+            if result.scalar() == 0:
+                print("Adding reply_to_id column to chat_messages table...")
+                conn.execute(text("ALTER TABLE dbo.chat_messages ADD reply_to_id INT NULL"))
+                # Add foreign key constraint if it doesn't exist
+                try:
+                    conn.execute(text("""
+                        IF NOT EXISTS (
+                            SELECT 1 FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS 
+                            WHERE CONSTRAINT_NAME = 'FK_chat_messages_reply_to'
+                        )
+                        BEGIN
+                            ALTER TABLE dbo.chat_messages 
+                            ADD CONSTRAINT FK_chat_messages_reply_to 
+                            FOREIGN KEY (reply_to_id) REFERENCES chat_messages(id);
+                        END
+                    """))
+                except Exception as fk_error:
+                    print(f"⚠ Note: Foreign key may already exist: {fk_error}")
+                print("✓ Added reply_to_id column and foreign key")
+            else:
+                print("✓ reply_to_id column already exists")
+            
+            # Check and add other missing columns
+            missing_columns = [
+                ('updated_at', 'DATETIME NULL'),
+                ('is_edited', 'BIT NOT NULL DEFAULT(0)'),
+                ('is_deleted', 'BIT NOT NULL DEFAULT(0)'),
+                ('deleted_for_sender', 'BIT NOT NULL DEFAULT(0)'),
+                ('deleted_for_recipient', 'BIT NOT NULL DEFAULT(0)')
+            ]
+            
+            for col_name, col_def in missing_columns:
+                result = conn.execute(text(f"""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='chat_messages' AND COLUMN_NAME='{col_name}'
+                """))
+                if result.scalar() == 0:
+                    print(f"Adding {col_name} column to chat_messages table...")
+                    conn.execute(text(f"ALTER TABLE dbo.chat_messages ADD {col_name} {col_def}"))
+                    print(f"✓ Added {col_name} column")
+                else:
+                    print(f"✓ {col_name} column already exists")
+    except Exception as e:
+        print(f"⚠ Warning ensuring chat_messages columns: {e}")
+    
     # Verify all tables exist
     print("\n" + "=" * 60)
     print("Verifying tables...")
