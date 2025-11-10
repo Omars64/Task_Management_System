@@ -247,7 +247,7 @@ def init_database():
                     END
                 """))
                 
-                # Create chat_messages table if not exists
+                # Create chat_messages table if not exists (with ALL required columns)
                 conn.execute(text("""
                     IF OBJECT_ID('dbo.chat_messages', 'U') IS NULL
                     BEGIN
@@ -257,15 +257,77 @@ def init_database():
                             sender_id INT NOT NULL,
                             recipient_id INT NOT NULL,
                             content NVARCHAR(MAX) NOT NULL,
+                            reply_to_id INT NULL,
                             delivery_status NVARCHAR(20) DEFAULT 'sent',
                             is_read BIT DEFAULT 0,
                             read_at DATETIME NULL,
                             created_at DATETIME DEFAULT GETUTCDATE(),
+                            updated_at DATETIME NULL,
+                            is_edited BIT DEFAULT 0,
+                            is_deleted BIT DEFAULT 0,
+                            deleted_for_sender BIT DEFAULT 0,
+                            deleted_for_recipient BIT DEFAULT 0,
                             FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
                             FOREIGN KEY (sender_id) REFERENCES users(id),
-                            FOREIGN KEY (recipient_id) REFERENCES users(id)
+                            FOREIGN KEY (recipient_id) REFERENCES users(id),
+                            FOREIGN KEY (reply_to_id) REFERENCES chat_messages(id)
                         );
                     END
+                """))
+                
+                # Ensure all columns exist (in case table was created with old schema)
+                # This will add any missing columns without error if they already exist
+                conn.execute(text("""
+                    -- Add reply_to_id if missing
+                    IF NOT EXISTS (
+                        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='chat_messages' AND COLUMN_NAME='reply_to_id'
+                    )
+                    BEGIN 
+                        ALTER TABLE dbo.chat_messages ADD reply_to_id INT NULL;
+                        ALTER TABLE dbo.chat_messages ADD CONSTRAINT FK_chat_messages_reply_to 
+                        FOREIGN KEY (reply_to_id) REFERENCES chat_messages(id);
+                    END
+                """))
+                conn.execute(text("""
+                    -- Add updated_at if missing
+                    IF NOT EXISTS (
+                        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='chat_messages' AND COLUMN_NAME='updated_at'
+                    )
+                    BEGIN ALTER TABLE dbo.chat_messages ADD updated_at DATETIME NULL; END
+                """))
+                conn.execute(text("""
+                    -- Add is_edited if missing
+                    IF NOT EXISTS (
+                        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='chat_messages' AND COLUMN_NAME='is_edited'
+                    )
+                    BEGIN ALTER TABLE dbo.chat_messages ADD is_edited BIT NOT NULL DEFAULT(0); END
+                """))
+                conn.execute(text("""
+                    -- Add is_deleted if missing
+                    IF NOT EXISTS (
+                        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='chat_messages' AND COLUMN_NAME='is_deleted'
+                    )
+                    BEGIN ALTER TABLE dbo.chat_messages ADD is_deleted BIT NOT NULL DEFAULT(0); END
+                """))
+                conn.execute(text("""
+                    -- Add deleted_for_sender if missing
+                    IF NOT EXISTS (
+                        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='chat_messages' AND COLUMN_NAME='deleted_for_sender'
+                    )
+                    BEGIN ALTER TABLE dbo.chat_messages ADD deleted_for_sender BIT NOT NULL DEFAULT(0); END
+                """))
+                conn.execute(text("""
+                    -- Add deleted_for_recipient if missing
+                    IF NOT EXISTS (
+                        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='chat_messages' AND COLUMN_NAME='deleted_for_recipient'
+                    )
+                    BEGIN ALTER TABLE dbo.chat_messages ADD deleted_for_recipient BIT NOT NULL DEFAULT(0); END
                 """))
                 
                 # Add related_conversation_id to notifications if not exists
