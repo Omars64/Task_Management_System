@@ -456,22 +456,29 @@
 
 .message-footer {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
   font-size: 11px;
 }
 
-.message-time-actions {
+.message-actions {
   display: flex;
   align-items: center;
   gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
-.message-status {
+.message:hover .message-actions {
+  opacity: 1;
+}
+
+.message-time-status {
   display: flex;
   align-items: center;
+  gap: 4px;
   margin-left: auto;
 }
 
@@ -483,7 +490,7 @@
 .icon-double-gray,
 .icon-double-checked {
   font-size: 14px;
-  margin-left: 4px;
+  margin-left: 2px;
   display: inline-flex;
   align-items: center;
 }

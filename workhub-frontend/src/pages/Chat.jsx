@@ -858,37 +858,35 @@ const Chat = () => {
                         })()
                       )}
                       <div className="message-footer">
-                        <div className="message-time-actions">
+                        <div className="message-actions">
+                          <button
+                            type="button"
+                            className="message-actions-toggle"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMessageActionId(messageActionId === msg.id ? null : msg.id);
+                            }}
+                            title="More actions"
+                          >
+                            <FiMoreVertical />
+                          </button>
+                          {messageActionId === msg.id && (
+                            <div className="message-actions-menu">
+                              <button type="button" onClick={() => { setReplyingTo(msg.id); setMessageActionId(null); }}>Reply</button>
+                              {msg.sender_id === user.id && (
+                                <button type="button" disabled={!canModifyMessage(msg) || msg.is_deleted} onClick={() => startEditMessage(msg)}>Edit</button>
+                              )}
+                              <button type="button" onClick={() => deleteForMe(msg)}>Delete for me</button>
+                              {msg.sender_id === user.id && (
+                                <button type="button" disabled={!canModifyMessage(msg) || msg.is_deleted} onClick={() => deleteForEveryone(msg)}>Delete for everyone</button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <div className="message-time-status">
                           <span className="message-time">
                             {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
                           </span>
-                          <div className="message-actions">
-                            <button
-                              type="button"
-                              className="message-actions-toggle"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMessageActionId(messageActionId === msg.id ? null : msg.id);
-                              }}
-                              title="More actions"
-                            >
-                              <FiMoreVertical />
-                            </button>
-                            {messageActionId === msg.id && (
-                              <div className="message-actions-menu">
-                                <button type="button" onClick={() => { setReplyingTo(msg.id); setMessageActionId(null); }}>Reply</button>
-                                {msg.sender_id === user.id && (
-                                  <button type="button" disabled={!canModifyMessage(msg) || msg.is_deleted} onClick={() => startEditMessage(msg)}>Edit</button>
-                                )}
-                                <button type="button" onClick={() => deleteForMe(msg)}>Delete for me</button>
-                                {msg.sender_id === user.id && (
-                                  <button type="button" disabled={!canModifyMessage(msg) || msg.is_deleted} onClick={() => deleteForEveryone(msg)}>Delete for everyone</button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="message-status">
                           {getDeliveryIcon(msg)}
                         </div>
                       </div>

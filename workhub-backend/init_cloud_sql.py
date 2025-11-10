@@ -220,7 +220,7 @@ def _do_init():
                         id INT IDENTITY(1,1) PRIMARY KEY,
                         message_id INT NOT NULL,
                         user_id INT NOT NULL,
-                        emoji NVARCHAR(10) NOT NULL,
+                        emoji NVARCHAR(MAX) NOT NULL,
                         created_at DATETIME DEFAULT GETUTCDATE(),
                         FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
                         FOREIGN KEY (user_id) REFERENCES users(id),
@@ -349,6 +349,29 @@ def _do_init():
                     print(f"✓ {col_name} column already exists")
     except Exception as e:
         print(f"⚠ Warning ensuring chat_messages columns: {e}")
+    
+    # Ensure message_reactions.emoji column is large enough for all emojis
+    print("\nEnsuring message_reactions.emoji column size is sufficient...")
+    try:
+        with db.engine.begin() as conn:
+            # Check current column size
+            result = conn.execute(text("""
+                SELECT CHARACTER_MAXIMUM_LENGTH 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='message_reactions' AND COLUMN_NAME='emoji'
+            """))
+            current_size = result.scalar()
+            # If column exists and is smaller than MAX, alter it
+            if current_size is not None and current_size < 1000:
+                print(f"Current emoji column size is {current_size}, expanding to NVARCHAR(MAX)...")
+                conn.execute(text("ALTER TABLE dbo.message_reactions ALTER COLUMN emoji NVARCHAR(MAX) NOT NULL"))
+                print("✓ Expanded emoji column to NVARCHAR(MAX)")
+            elif current_size is None:
+                print("⚠ message_reactions table or emoji column not found - will be created with correct size")
+            else:
+                print(f"✓ emoji column already has sufficient size ({current_size})")
+    except Exception as e:
+        print(f"⚠ Warning ensuring message_reactions.emoji column: {e}")
     
     # Verify all tables exist
     print("\n" + "=" * 60)

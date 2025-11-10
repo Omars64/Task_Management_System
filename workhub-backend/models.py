@@ -695,9 +695,9 @@ class ChatMessage(db.Model):
     reactions = db.relationship('MessageReaction', backref='message', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self):
-        # Get reply info if this message is a reply
+        # Get reply info if this message is a reply - use getattr for reply_to_id
         reply_info = None
-        if self.reply_to_id and self.reply_to:
+        if getattr(self, 'reply_to_id', None) and self.reply_to:
             try:
                 # Try to parse reply content (might be JSON for files)
                 import json
@@ -714,27 +714,28 @@ class ChatMessage(db.Model):
                 reply_info = {
                     'id': self.reply_to.id,
                     'content': reply_content,
-                    'sender_name': self.reply_to.sender.name if self.reply_to.sender else None
+                    'sender_name': getattr(self.reply_to.sender, 'name', None) if self.reply_to.sender else None
                 }
             except:
                 pass
         
+        # Use getattr for ALL potentially missing attributes to prevent AttributeError
         return {
             'id': self.id,
             'conversation_id': self.conversation_id,
             'sender_id': self.sender_id,
-            'sender_name': self.sender.name if self.sender else None,
+            'sender_name': getattr(self.sender, 'name', None) if self.sender else None,
             'recipient_id': self.recipient_id,
             'content': self.content,
             'reply_to': reply_info,
-            'delivery_status': self.delivery_status,
-            'is_read': self.is_read,
-            'read_at': self.read_at.isoformat() if self.read_at else None,
+            'delivery_status': getattr(self, 'delivery_status', 'sent'),
+            'is_read': getattr(self, 'is_read', False),
+            'read_at': getattr(self, 'read_at', None).isoformat() if getattr(self, 'read_at', None) else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'is_edited': self.is_edited,
-            'is_deleted': self.is_deleted,
-            'reactions': [r.to_dict() for r in self.reactions] if hasattr(self, 'reactions') else []
+            'updated_at': getattr(self, 'updated_at', None).isoformat() if getattr(self, 'updated_at', None) else None,
+            'is_edited': getattr(self, 'is_edited', False),
+            'is_deleted': getattr(self, 'is_deleted', False),
+            'reactions': [r.to_dict() for r in self.reactions] if hasattr(self, 'reactions') and self.reactions else []
         }
 
 
@@ -745,7 +746,7 @@ class MessageReaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     message_id = db.Column(db.Integer, db.ForeignKey('chat_messages.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    emoji = db.Column(db.String(10), nullable=False)  # Unicode emoji
+    emoji = db.Column(db.UnicodeText, nullable=False)  # Unicode emoji - use UnicodeText to support all emojis including complex ones
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     user = db.relationship('User', backref='message_reactions')
