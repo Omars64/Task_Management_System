@@ -52,7 +52,21 @@ const Settings = () => {
       
       if (isAdmin()) {
         const systemRes = await settingsAPI.getSystem();
-        setSystemSettings(systemRes.data);
+        // Merge with defaults to ensure all fields are present
+        setSystemSettings({
+          site_title: '',
+          default_role: 'user',
+          email_notifications_enabled: true,
+          default_language: 'en',
+          smtp_server: 'smtp.gmail.com',
+          smtp_port: 587,
+          smtp_username: '',
+          smtp_password: '',
+          smtp_from_email: '',
+          smtp_from_name: 'WorkHub Task Management',
+          email_configured: false,
+          ...systemRes.data  // Override with actual data from API
+        });
       }
     } catch (error) {
       console.error('Failed to fetch settings:', error);

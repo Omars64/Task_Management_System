@@ -79,7 +79,6 @@ steps:
       - '--min-instances=1'
       - '--max-instances=10'
       - '--timeout=300'
-      - '--vpc-egress=all-traffic'
       - '--set-cloudsql-instances=${_CLOUD_SQL_CONNECTION}'
       - '--set-secrets=DB_PASSWORD=workhub-db-password:latest,SECRET_KEY=workhub-secret-key:latest,JWT_SECRET_KEY=workhub-jwt-secret:latest,MAIL_PASSWORD=workhub-mail-password:latest'
       - '--set-env-vars=CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION},DB_HOST=10.119.176.3,DB_PORT=1433,DB_NAME=${_DB_NAME},DB_USER=${_DB_USER},DB_DIALECT=mssql,USE_CLOUD_STORAGE=true,CLOUD_STORAGE_BUCKET=${_CLOUD_STORAGE_BUCKET},GCP_PROJECT=${PROJECT_ID},FLASK_ENV=production,FRONTEND_URL=https://${_FRONTEND_SERVICE}-${PROJECT_ID}.a.run.app,EMAIL_NOTIFICATIONS_ENABLED=true'
