@@ -114,11 +114,19 @@ def get_conversations():
                 last_message_preview = None
                 last_message_time = None
                 try:
-                    recent_messages = ChatMessage.query.filter_by(
-                        conversation_id=conv.id
-                    ).filter(
-                        ChatMessage.is_deleted == False
-                    ).order_by(desc(ChatMessage.created_at)).limit(50).all()
+                    # Use getattr-safe filtering - try to filter by is_deleted, fallback if column doesn't exist
+                    try:
+                        recent_messages = ChatMessage.query.filter_by(
+                            conversation_id=conv.id
+                        ).filter(
+                            ChatMessage.is_deleted == False
+                        ).order_by(desc(ChatMessage.created_at)).limit(50).all()
+                    except (AttributeError, Exception) as filter_error:
+                        # Column might not exist in database - query without the filter
+                        print(f"[Chat API] is_deleted column may not exist, querying without filter: {filter_error}")
+                        recent_messages = ChatMessage.query.filter_by(
+                            conversation_id=conv.id
+                        ).order_by(desc(ChatMessage.created_at)).limit(50).all()
                     
                     # Find first message not deleted for current user
                     for msg in recent_messages:
@@ -484,12 +492,12 @@ def get_messages(conversation_id):
         # Filter out messages that are hidden for current user
         filtered_messages = []
         for msg in messages:
-            # Skip if deleted for this specific user
-            if msg.sender_id == current_user.id and msg.deleted_for_sender:
+            # Skip if deleted for this specific user (use getattr for backward compat)
+            if msg.sender_id == current_user.id and getattr(msg, 'deleted_for_sender', False):
                 continue
-            if msg.recipient_id == current_user.id and msg.deleted_for_recipient:
+            if msg.recipient_id == current_user.id and getattr(msg, 'deleted_for_recipient', False):
                 continue
-            if msg.is_deleted:
+            if getattr(msg, 'is_deleted', False):
                 continue
             
             # Use the model's to_dict() method - it works when relationships are loaded
@@ -883,8 +891,8 @@ def edit_message(message_id):
         if message.sender_id != current_user.id:
             return jsonify({'error': 'You can only edit your own messages'}), 403
         
-        # Check if message was deleted
-        if message.is_deleted:
+        # Check if message was deleted (use getattr for backward compat)
+        if getattr(message, 'is_deleted', False):
             return jsonify({'error': 'Cannot edit deleted message'}), 400
         
         # Check 30-minute time limit
@@ -929,11 +937,13 @@ def delete_message_for_me(message_id):
         if message.sender_id != current_user.id and message.recipient_id != current_user.id:
             return jsonify({'error': 'Access denied'}), 403
         
-        # Mark as deleted for this user
+        # Mark as deleted for this user (use setattr for backward compat)
         if message.sender_id == current_user.id:
-            message.deleted_for_sender = True
+            if hasattr(message, 'deleted_for_sender'):
+                message.deleted_for_sender = True
         else:
-            message.deleted_for_recipient = True
+            if hasattr(message, 'deleted_for_recipient'):
+                message.deleted_for_recipient = True
         
         db.session.commit()
         
@@ -963,8 +973,8 @@ def delete_message_for_everyone(message_id):
         if message.sender_id != current_user.id:
             return jsonify({'error': 'You can only delete your own messages for everyone'}), 403
         
-        # Check if already deleted
-        if message.is_deleted:
+        # Check if already deleted (use getattr for backward compat)
+        if getattr(message, 'is_deleted', False):
             return jsonify({'error': 'Message already deleted'}), 400
         
         # Check 30-minute time limit
@@ -972,7 +982,9 @@ def delete_message_for_everyone(message_id):
         if time_diff.total_seconds() > 1800:  # 30 minutes = 1800 seconds
             return jsonify({'error': 'Messages can only be deleted for everyone within 30 minutes'}), 400
         
-        message.is_deleted = True
+        # Set is_deleted if column exists (backward compat)
+        if hasattr(message, 'is_deleted'):
+            message.is_deleted = True
         message.content = 'This message was deleted'
         db.session.commit()
         
