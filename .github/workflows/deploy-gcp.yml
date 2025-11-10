@@ -111,19 +111,37 @@ jobs:
 
       - name: Deploy Backend to Cloud Run
         run: |
-          gcloud run deploy workhub-backend \
-            --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.BACKEND_IMAGE }}:${{ github.sha }} \
-            --platform managed \
-            --region ${{ env.REGION }} \
-            --allow-unauthenticated \
-            --memory 2Gi \
-            --cpu 2 \
-            --min-instances 1 \
-            --max-instances 10 \
-            --timeout 300 \
-            --set-secrets DB_PASSWORD=workhub-db-password:latest,SECRET_KEY=workhub-secret-key:latest,JWT_SECRET_KEY=workhub-jwt-secret:latest,MAIL_PASSWORD=workhub-mail-password:latest \
-            --set-env-vars DB_HOST=10.119.176.3,DB_PORT=1433,DB_NAME=workhub,DB_USER=${{ secrets.DB_USER }},DB_DIALECT=mssql,USE_CLOUD_STORAGE=true,CLOUD_STORAGE_BUCKET=${{ secrets.CLOUD_STORAGE_BUCKET }},GCP_PROJECT=${{ env.PROJECT_ID }},ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }},FRONTEND_URL=${{ secrets.FRONTEND_URL }},MAIL_SERVER=${{ secrets.MAIL_SERVER }},MAIL_PORT=${{ secrets.MAIL_PORT }},MAIL_USERNAME=${{ secrets.MAIL_USERNAME }},MAIL_DEFAULT_SENDER=${{ secrets.MAIL_DEFAULT_SENDER }},EMAIL_NOTIFICATIONS_ENABLED=true \
-            --service-account ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          # Retry logic to handle version conflicts (can happen with concurrent deployments)
+          max_retries=3
+          retry_count=0
+          while [ $retry_count -lt $max_retries ]; do
+            if gcloud run deploy workhub-backend \
+              --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.BACKEND_IMAGE }}:${{ github.sha }} \
+              --platform managed \
+              --region ${{ env.REGION }} \
+              --allow-unauthenticated \
+              --memory 2Gi \
+              --cpu 2 \
+              --min-instances 1 \
+              --max-instances 10 \
+              --timeout 300 \
+              --set-secrets DB_PASSWORD=workhub-db-password:latest,SECRET_KEY=workhub-secret-key:latest,JWT_SECRET_KEY=workhub-jwt-secret:latest,MAIL_PASSWORD=workhub-mail-password:latest \
+              --set-env-vars DB_HOST=10.119.176.3,DB_PORT=1433,DB_NAME=workhub,DB_USER=${{ secrets.DB_USER }},DB_DIALECT=mssql,USE_CLOUD_STORAGE=true,CLOUD_STORAGE_BUCKET=${{ secrets.CLOUD_STORAGE_BUCKET }},GCP_PROJECT=${{ env.PROJECT_ID }},ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }},FRONTEND_URL=${{ secrets.FRONTEND_URL }},MAIL_SERVER=${{ secrets.MAIL_SERVER }},MAIL_PORT=${{ secrets.MAIL_PORT }},MAIL_USERNAME=${{ secrets.MAIL_USERNAME }},MAIL_DEFAULT_SENDER=${{ secrets.MAIL_DEFAULT_SENDER }},EMAIL_NOTIFICATIONS_ENABLED=true \
+              --service-account ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }} \
+              --quiet; then
+              echo "✅ Backend deployed successfully"
+              exit 0
+            else
+              retry_count=$((retry_count + 1))
+              if [ $retry_count -lt $max_retries ]; then
+                echo "⚠️ Deployment failed, retrying in 10 seconds... (attempt $retry_count/$max_retries)"
+                sleep 10
+              else
+                echo "❌ Deployment failed after $max_retries attempts"
+                exit 1
+              fi
+            fi
+          done
 
   deploy-frontend:
     name: Deploy Frontend to Cloud Run
@@ -144,18 +162,36 @@ jobs:
 
       - name: Deploy Frontend to Cloud Run
         run: |
-          gcloud run deploy workhub-frontend \
-            --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
-            --platform managed \
-            --region ${{ env.REGION }} \
-            --allow-unauthenticated \
-            --memory 512Mi \
-            --cpu 1 \
-            --min-instances 1 \
-            --max-instances 5 \
-            --timeout 60 \
-            --port 8080 \
-            --service-account ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          # Retry logic to handle version conflicts (can happen with concurrent deployments)
+          max_retries=3
+          retry_count=0
+          while [ $retry_count -lt $max_retries ]; do
+            if gcloud run deploy workhub-frontend \
+              --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/workhub-repo/${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
+              --platform managed \
+              --region ${{ env.REGION }} \
+              --allow-unauthenticated \
+              --memory 512Mi \
+              --cpu 1 \
+              --min-instances 1 \
+              --max-instances 5 \
+              --timeout 60 \
+              --port 8080 \
+              --service-account ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }} \
+              --quiet; then
+              echo "✅ Frontend deployed successfully"
+              exit 0
+            else
+              retry_count=$((retry_count + 1))
+              if [ $retry_count -lt $max_retries ]; then
+                echo "⚠️ Deployment failed, retrying in 10 seconds... (attempt $retry_count/$max_retries)"
+                sleep 10
+              else
+                echo "❌ Deployment failed after $max_retries attempts"
+                exit 1
+              fi
+            fi
+          done
 
   verify-deployment:
     name: Verify Deployment
