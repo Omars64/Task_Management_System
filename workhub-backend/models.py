@@ -761,7 +761,8 @@ class MessageReaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     message_id = db.Column(db.Integer, db.ForeignKey('chat_messages.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    emoji = db.Column(db.UnicodeText, nullable=False)  # Unicode emoji - use UnicodeText to support all emojis including complex ones
+    # Store as NVARCHAR(32) (SQL Server) / VARCHAR(32) for indexability; supports multi-codepoint emojis
+    emoji = db.Column(db.Unicode(32), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     user = db.relationship('User', backref='message_reactions')

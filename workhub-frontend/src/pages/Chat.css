@@ -2,13 +2,13 @@
   display: flex;
   flex-direction: column;
   height: calc(100vh - 80px);
-  padding: 20px;
+  padding: 8px;
   max-width: 100%;
   margin: 0;
 }
 
 .chat-header {
-  margin-bottom: 20px;
+  display: none; /* Hide explicit Chat header to maximize space */
 }
 
 .chat-header h1 {
@@ -54,7 +54,7 @@
 
 .chat-container {
   display: flex;
-  gap: 20px;
+  gap: 12px;
   flex: 1;
   min-height: 0;
 }

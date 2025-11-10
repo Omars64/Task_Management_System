@@ -5,6 +5,7 @@ Chat API endpoints for direct messaging between users
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
 from models import db, User, ChatConversation, ChatMessage, MessageReaction
@@ -1053,15 +1054,36 @@ def add_reaction(message_id):
             db.session.commit()
             return jsonify({'message': 'Reaction removed', 'removed': True}), 200
         
-        # Add new reaction
-        reaction = MessageReaction(
-            message_id=message_id,
-            user_id=current_user.id,
-            emoji=emoji
-        )
-        
-        db.session.add(reaction)
-        db.session.commit()
+        # Add new reaction (handle race/dedup by unique constraint)
+        try:
+            reaction = MessageReaction(
+                message_id=message_id,
+                user_id=current_user.id,
+                emoji=emoji
+            )
+            db.session.add(reaction)
+            db.session.commit()
+        except IntegrityError:
+            # If duplicate due to race, treat as toggle-remove
+            db.session.rollback()
+            existing = MessageReaction.query.filter_by(
+                message_id=message_id,
+                user_id=current_user.id,
+                emoji=emoji
+            ).first()
+            if existing:
+                db.session.delete(existing)
+                db.session.commit()
+                return jsonify({'message': 'Reaction removed', 'removed': True}), 200
+            else:
+                # If not found, create again
+                reaction = MessageReaction(
+                    message_id=message_id,
+                    user_id=current_user.id,
+                    emoji=emoji
+                )
+                db.session.add(reaction)
+                db.session.commit()
         
         return jsonify({'message': 'Reaction added', 'reaction': reaction.to_dict()}), 201
     except SQLAlchemyError as e:
