@@ -196,6 +196,7 @@ def _do_init():
                         sender_id INT NOT NULL,
                         recipient_id INT NOT NULL,
                         content NVARCHAR(MAX) NOT NULL,
+                        reply_to_id INT NULL,
                         delivery_status NVARCHAR(20) DEFAULT 'sent',
                         is_read BIT DEFAULT 0,
                         read_at DATETIME NULL,
@@ -207,7 +208,8 @@ def _do_init():
                         deleted_for_recipient BIT DEFAULT 0,
                         FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
                         FOREIGN KEY (sender_id) REFERENCES users(id),
-                        FOREIGN KEY (recipient_id) REFERENCES users(id)
+                        FOREIGN KEY (recipient_id) REFERENCES users(id),
+                        FOREIGN KEY (reply_to_id) REFERENCES chat_messages(id)
                     );
                 END
             """,
