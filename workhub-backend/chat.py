@@ -499,8 +499,6 @@ def get_messages(conversation_id):
                 continue
             if msg.recipient_id == current_user.id and getattr(msg, 'deleted_for_recipient', False):
                 continue
-            if getattr(msg, 'is_deleted', False):
-                continue
             
             # Use the model's to_dict() method - it works when relationships are loaded
             try:

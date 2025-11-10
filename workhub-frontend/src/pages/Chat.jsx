@@ -886,6 +886,12 @@ const Chat = () => {
                       ) : (
                         (() => {
                           let rendered = null;
+                          // When a message is deleted for everyone, show a placeholder instead of content
+                          if (msg.is_deleted) {
+                            return (
+                              <div className="message-deleted">This message was deleted</div>
+                            );
+                          }
                           try {
                             const data = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
                             if (data && data.type === 'file') {

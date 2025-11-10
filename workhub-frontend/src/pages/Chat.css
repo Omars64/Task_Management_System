@@ -457,6 +457,12 @@
   white-space: pre-wrap; /* preserve newlines from textarea */
 }
 
+.message-deleted {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text-light, #6b7280);
+}
+
 .message-footer {
   display: flex;
   align-items: center;
