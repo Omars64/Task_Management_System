@@ -57,7 +57,34 @@ def update_system_settings():
         if 'default_language' in data:
             settings.default_language = data['default_language']
         
+        # SMTP Configuration (email settings)
+        if 'smtp_server' in data:
+            settings.smtp_server = data['smtp_server']
+        if 'smtp_port' in data:
+            settings.smtp_port = int(data['smtp_port']) if data['smtp_port'] else 587
+        if 'smtp_username' in data:
+            settings.smtp_username = data['smtp_username']
+        if 'smtp_password' in data:
+            settings.smtp_password = data['smtp_password']
+        if 'smtp_from_email' in data:
+            settings.smtp_from_email = data['smtp_from_email']
+        if 'smtp_from_name' in data:
+            settings.smtp_from_name = data['smtp_from_name']
+        
         db.session.commit()
+        
+        # Reload email configuration in Flask app if SMTP settings were updated
+        smtp_updated = any(key in data for key in ['smtp_server', 'smtp_port', 'smtp_username', 'smtp_password', 'smtp_from_email', 'smtp_from_name'])
+        if smtp_updated:
+            try:
+                from flask import current_app
+                app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
+                if hasattr(app, 'load_email_config_from_db'):
+                    app.load_email_config_from_db()
+            except Exception as reload_error:
+                # Log but don't fail the request
+                import logging
+                logging.getLogger('workhub').warning(f"Could not reload email config after settings update: {reload_error}")
         
         return jsonify({
             'message': 'System settings updated successfully',

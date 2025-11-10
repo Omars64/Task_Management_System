@@ -49,7 +49,8 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload size
     
     # Configure email service (support both SMTP_* and MAIL_* envs)
-    # Read from environment variables (GCP Secret Manager or Cloud Run env vars)
+    # Priority: Environment variables > SystemSettings database
+    # Read from environment variables first (GCP Secret Manager or Cloud Run env vars)
     app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER') or os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
     app.config['MAIL_PORT'] = int((os.environ.get('MAIL_PORT') or os.environ.get('SMTP_PORT') or 587))
     app.config['MAIL_USE_TLS'] = str(os.environ.get('MAIL_USE_TLS', 'True')).lower() == 'true'
@@ -66,6 +67,53 @@ def create_app():
     app.config['SMTP_PASSWORD'] = app.config['MAIL_PASSWORD']
     app.config['SMTP_FROM_EMAIL'] = app.config['MAIL_DEFAULT_SENDER']
     app.config['SMTP_FROM_NAME'] = os.environ.get('SMTP_FROM_NAME', 'WorkHub Task Management')
+    
+    # Function to load email config from SystemSettings database (fallback if env vars not set)
+    def load_email_config_from_db():
+        """Load email configuration from SystemSettings if env vars are not set"""
+        try:
+            from models import SystemSettings
+            # Only load from DB if env vars are not set
+            if not app.config.get('MAIL_USERNAME') or not app.config.get('MAIL_PASSWORD'):
+                settings = SystemSettings.query.first()
+                if settings and settings.smtp_username and settings.smtp_password:
+                    # Update config from database
+                    if settings.smtp_server:
+                        app.config['MAIL_SERVER'] = settings.smtp_server
+                        app.config['SMTP_SERVER'] = settings.smtp_server
+                    if settings.smtp_port:
+                        app.config['MAIL_PORT'] = settings.smtp_port
+                        app.config['SMTP_PORT'] = settings.smtp_port
+                    if settings.smtp_username:
+                        app.config['MAIL_USERNAME'] = settings.smtp_username
+                        app.config['SMTP_USERNAME'] = settings.smtp_username
+                    if settings.smtp_password:
+                        app.config['MAIL_PASSWORD'] = settings.smtp_password
+                        app.config['SMTP_PASSWORD'] = settings.smtp_password
+                    if settings.smtp_from_email:
+                        app.config['MAIL_DEFAULT_SENDER'] = settings.smtp_from_email
+                        app.config['SMTP_FROM_EMAIL'] = settings.smtp_from_email
+                    if settings.smtp_from_name:
+                        app.config['SMTP_FROM_NAME'] = settings.smtp_from_name
+                    
+                    # Reinitialize Flask-Mail with new config
+                    if 'mail' in app.extensions:
+                        app.extensions['mail'].init_app(app)
+                    else:
+                        mail = Mail(app)
+                        app.extensions['mail'] = mail
+                    
+                    # Reinitialize email service
+                    email_service.init_app(app)
+                    
+                    logging.getLogger('workhub').info("Email configuration loaded from SystemSettings database")
+                    return True
+        except Exception as e:
+            logging.getLogger('workhub').warning(f"Could not load email config from database: {e}")
+        return False
+    
+    # Store function for later use
+    app.load_email_config_from_db = load_email_config_from_db
     
     # Enable emails automatically if credentials are present, unless explicitly disabled
     env_enabled = os.environ.get('EMAIL_NOTIFICATIONS_ENABLED')
@@ -100,6 +148,10 @@ def create_app():
                         # Fallback: use SQLAlchemy create_all
                         db.create_all()
                         logging.getLogger('workhub').info("Database schema initialized using db.create_all()")
+                    
+                    # After database is initialized, try to load email config from SystemSettings
+                    if hasattr(app, 'load_email_config_from_db'):
+                        app.load_email_config_from_db()
             except Exception as e:
                 logging.getLogger('workhub').error(f"Database initialization error: {e}")
                 # Don't block app if initialization fails - tables might already exist

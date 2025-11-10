@@ -37,6 +37,13 @@ class EmailService:
     def init_app(self, app):
         """Initialize email service with Flask app config"""
         self.app = app  # Store app instance for later use
+        self._load_config_from_app(app)
+        
+        if self.enabled and not self.smtp_username:
+            logger.warning("Email notifications enabled but SMTP credentials not configured")
+    
+    def _load_config_from_app(self, app):
+        """Load email configuration from app.config, with fallback to SystemSettings"""
         self.smtp_server = app.config.get('SMTP_SERVER', 'smtp.gmail.com')
         self.smtp_port = app.config.get('SMTP_PORT', 587)
         self.smtp_username = app.config.get('SMTP_USERNAME', '')
@@ -46,8 +53,31 @@ class EmailService:
         self.enabled = app.config.get('EMAIL_NOTIFICATIONS_ENABLED', False)
         self.frontend_url = app.config.get('FRONTEND_URL', 'http://localhost:5173')
         
-        if self.enabled and not self.smtp_username:
-            logger.warning("Email notifications enabled but SMTP credentials not configured")
+        # If credentials not in app.config, try loading from SystemSettings database
+        if not self.smtp_username or not self.smtp_password:
+            try:
+                from models import SystemSettings
+                with app.app_context():
+                    settings = SystemSettings.query.first()
+                    if settings and settings.smtp_username and settings.smtp_password:
+                        self.smtp_username = settings.smtp_username
+                        self.smtp_password = settings.smtp_password
+                        if settings.smtp_server:
+                            self.smtp_server = settings.smtp_server
+                        if settings.smtp_port:
+                            self.smtp_port = settings.smtp_port
+                        if settings.smtp_from_email:
+                            self.from_email = settings.smtp_from_email
+                        if settings.smtp_from_name:
+                            self.from_name = settings.smtp_from_name
+                        # Update app.config for consistency
+                        app.config['SMTP_USERNAME'] = self.smtp_username
+                        app.config['SMTP_PASSWORD'] = self.smtp_password
+                        app.config['MAIL_USERNAME'] = self.smtp_username
+                        app.config['MAIL_PASSWORD'] = self.smtp_password
+                        logger.info("Email configuration loaded from SystemSettings database")
+            except Exception as e:
+                logger.warning(f"Could not load email config from SystemSettings: {e}")
     
     def send_email(self, to_email: str, subject: str, html_content: str, plain_content: str = None) -> bool:
         """
@@ -62,6 +92,10 @@ class EmailService:
         Returns:
             bool: True if sent successfully, False otherwise
         """
+        # Reload config before sending (in case it was updated in SystemSettings)
+        if self.app:
+            self._load_config_from_app(self.app)
+        
         if not self.enabled:
             logger.info(f"Email notifications disabled. Would have sent: {subject} to {to_email}")
             return False
