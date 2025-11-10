@@ -2,9 +2,9 @@
   display: flex;
   flex-direction: column;
   height: calc(100vh - 80px);
-  padding: 24px;
-  max-width: 1600px;
-  margin: 0 auto;
+  padding: 20px;
+  max-width: 100%;
+  margin: 0;
 }
 
 .chat-header {
@@ -60,7 +60,8 @@
 }
 
 .chat-sidebar {
-  width: 320px;
+  width: 280px;
+  min-width: 280px;
   background: var(--bg-secondary, #f9fafb);
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 8px;
@@ -231,6 +232,7 @@
 
 .chat-main {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-primary, #fff);
@@ -311,6 +313,7 @@
   display: flex;
   flex-direction: column; /* show oldest at top, newest at bottom */
   gap: 12px;
+  background: #a5b8bc;
 }
 
 .message {
