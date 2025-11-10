@@ -32,6 +32,7 @@ const Chat = () => {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [showReactionPicker, setShowReactionPicker] = useState(null); // messageId or null
   const [replyingTo, setReplyingTo] = useState(null); // messageId or null
+  const [contextMenuMessage, setContextMenuMessage] = useState(null); // message object for WhatsApp-style sidebar
   const messagesEndRef = useRef(null);
   const messageIntervalRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -506,21 +507,48 @@ const Chat = () => {
     return <FiCheck className="icon-single-gray" />;
   };
 
-  // Helper function to normalize and validate emoji
+  // Helper function to normalize and validate emoji - fix encoding issues
   const normalizeEmoji = (emoji) => {
     if (!emoji) return '';
+    
+    // If it's already corrupted (contains ??), try to recover or skip
+    if (typeof emoji === 'string' && emoji.includes('??')) {
+      // Try to decode if it's a hex string or encoded incorrectly
+      try {
+        // Check if it's a valid emoji by trying to encode/decode
+        const encoded = encodeURIComponent(emoji);
+        const decoded = decodeURIComponent(encoded);
+        if (decoded && !decoded.includes('??')) {
+          return decoded.trim();
+        }
+      } catch (e) {
+        // If decoding fails, return empty to skip
+        return '';
+      }
+      return ''; // Skip corrupted emojis
+    }
+    
     // Remove any null bytes or invalid characters
     const cleaned = emoji.replace(/\0/g, '').trim();
+    
     // Ensure it's a valid Unicode string
-    try {
-      // If emoji is corrupted, try to decode it
-      if (cleaned.includes('??') || cleaned.length === 0) {
-        return cleaned; // Return as-is if already corrupted
+    if (cleaned && cleaned.length > 0) {
+      // Validate it's a proper emoji by checking if it contains valid Unicode
+      try {
+        // Try to encode as UTF-8 to validate
+        const test = new TextEncoder().encode(cleaned);
+        const decoded = new TextDecoder('utf-8').decode(test);
+        if (decoded && !decoded.includes('?')) {
+          return decoded;
+        }
+      } catch (e) {
+        // If encoding fails, return as-is but log
+        console.warn('Emoji encoding validation failed:', emoji);
       }
       return cleaned;
-    } catch (e) {
-      return cleaned;
     }
+    
+    return '';
   };
 
   const groupReactions = (reactions) => {
@@ -857,37 +885,35 @@ const Chat = () => {
                           return rendered;
                         })()
                       )}
-                      <div className="message-footer">
-                        <div className="message-actions">
-                          <button
-                            type="button"
-                            className="message-actions-toggle"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMessageActionId(messageActionId === msg.id ? null : msg.id);
-                            }}
-                            title="More actions"
-                          >
-                            <FiMoreVertical />
-                          </button>
-                          {messageActionId === msg.id && (
-                            <div className="message-actions-menu">
-                              <button type="button" onClick={() => { setReplyingTo(msg.id); setMessageActionId(null); }}>Reply</button>
-                              {msg.sender_id === user.id && (
-                                <button type="button" disabled={!canModifyMessage(msg) || msg.is_deleted} onClick={() => startEditMessage(msg)}>Edit</button>
-                              )}
-                              <button type="button" onClick={() => deleteForMe(msg)}>Delete for me</button>
-                              {msg.sender_id === user.id && (
-                                <button type="button" disabled={!canModifyMessage(msg) || msg.is_deleted} onClick={() => deleteForEveryone(msg)}>Delete for everyone</button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <div className="message-time-status">
-                          <span className="message-time">
-                            {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                          </span>
-                          {getDeliveryIcon(msg)}
+                      <div 
+                        className="message-content-wrapper"
+                        onClick={(e) => {
+                          // Only open sidebar if clicking on the message content, not on reactions or other elements
+                          if (!e.target.closest('.message-reactions') && !e.target.closest('.message-actions-toggle')) {
+                            setContextMenuMessage(msg);
+                          }
+                        }}
+                      >
+                        <div className="message-footer">
+                          <div className="message-actions">
+                            <button
+                              type="button"
+                              className="message-actions-toggle"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setContextMenuMessage(msg);
+                              }}
+                              title="More actions"
+                            >
+                              <FiMoreVertical />
+                            </button>
+                          </div>
+                          <div className="message-time-status">
+                            <span className="message-time">
+                              {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                            </span>
+                            {getDeliveryIcon(msg)}
+                          </div>
                         </div>
                       </div>
                       {msg.reactions && msg.reactions.length > 0 && (
@@ -1086,6 +1112,121 @@ const Chat = () => {
           <span style={{ marginRight: 16 }} onClick={(e) => { e.stopPropagation(); setGalleryIndex(i => Math.min(galleryImages.length - 1, i + 1)); }}>›</span>
         </div>
       </div>
+    )}
+    
+    {/* WhatsApp-style Context Menu Sidebar */}
+    {contextMenuMessage && (
+      <>
+        <div 
+          className="context-menu-overlay"
+          onClick={() => setContextMenuMessage(null)}
+        />
+        <div className="context-menu-sidebar">
+          <div className="context-menu-header">
+            <button 
+              className="context-menu-close"
+              onClick={() => setContextMenuMessage(null)}
+            >
+              <FiX />
+            </button>
+          </div>
+          <div className="context-menu-options">
+            <button 
+              type="button"
+              className="context-menu-item"
+              onClick={() => {
+                setReplyingTo(contextMenuMessage.id);
+                setContextMenuMessage(null);
+              }}
+            >
+              <span className="context-menu-icon">↩️</span>
+              <span>Reply</span>
+            </button>
+            {contextMenuMessage.sender_id === user.id && (
+              <button 
+                type="button"
+                className="context-menu-item"
+                disabled={!canModifyMessage(contextMenuMessage) || contextMenuMessage.is_deleted}
+                onClick={() => {
+                  startEditMessage(contextMenuMessage);
+                  setContextMenuMessage(null);
+                }}
+              >
+                <span className="context-menu-icon">✏️</span>
+                <span>Edit</span>
+              </button>
+            )}
+            <button 
+              type="button"
+              className="context-menu-item"
+              onClick={() => {
+                deleteForMe(contextMenuMessage);
+                setContextMenuMessage(null);
+              }}
+            >
+              <span className="context-menu-icon">🗑️</span>
+              <span>Delete for me</span>
+            </button>
+            {contextMenuMessage.sender_id === user.id && (
+              <button 
+                type="button"
+                className="context-menu-item"
+                disabled={!canModifyMessage(contextMenuMessage) || contextMenuMessage.is_deleted}
+                onClick={() => {
+                  deleteForEveryone(contextMenuMessage);
+                  setContextMenuMessage(null);
+                }}
+              >
+                <span className="context-menu-icon">🗑️</span>
+                <span>Delete for everyone</span>
+              </button>
+            )}
+          </div>
+          <div className="context-menu-reactions">
+            {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => {
+              const hasReaction = contextMenuMessage.reactions?.some(r => {
+                const normalized = normalizeEmoji(r.emoji);
+                return normalized === emoji && r.user_id === user.id;
+              });
+              return (
+                <button
+                  key={emoji}
+                  type="button"
+                  className={`context-reaction-btn ${hasReaction ? 'active' : ''}`}
+                  onClick={() => {
+                    if (hasReaction) {
+                      const userReaction = contextMenuMessage.reactions.find(r => {
+                        const normalized = normalizeEmoji(r.emoji);
+                        return normalized === emoji && r.user_id === user.id;
+                      });
+                      if (userReaction) {
+                        handleRemoveReaction(contextMenuMessage.id, userReaction.id);
+                      }
+                    } else {
+                      handleAddReaction(contextMenuMessage.id, emoji);
+                    }
+                    setContextMenuMessage(null);
+                  }}
+                  title={emoji}
+                >
+                  {emoji}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              className="context-reaction-btn add-more"
+              onClick={() => {
+                setShowReactionPicker(contextMenuMessage.id);
+                setContextMenuMessage(null);
+              }}
+              title="Add more reactions"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      </>
     )}
     </>
   );

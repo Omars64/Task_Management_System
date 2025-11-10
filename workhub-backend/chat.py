@@ -1024,6 +1024,21 @@ def add_reaction(message_id):
         if not emoji:
             return jsonify({'error': 'Emoji is required'}), 400
         
+        # Ensure emoji is properly encoded as UTF-8 string
+        # Remove any null bytes or invalid characters
+        emoji = emoji.replace('\0', '').strip()
+        
+        # Validate it's a valid Unicode string (not corrupted)
+        try:
+            # Try to encode/decode to validate UTF-8
+            emoji_bytes = emoji.encode('utf-8')
+            emoji = emoji_bytes.decode('utf-8')
+            # Skip if it contains replacement characters (corrupted) or is empty
+            if not emoji or '??' in emoji or '\ufffd' in emoji:  # \ufffd is the Unicode replacement character
+                return jsonify({'error': 'Invalid emoji format'}), 400
+        except (UnicodeEncodeError, UnicodeDecodeError) as e:
+            return jsonify({'error': 'Invalid emoji encoding'}), 400
+        
         # Check if reaction already exists (unique constraint will prevent duplicates)
         existing = MessageReaction.query.filter_by(
             message_id=message_id,

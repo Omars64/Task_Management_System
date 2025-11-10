@@ -1010,3 +1010,186 @@
   border-color: var(--border-color, #4b5563);
 }
 
+/* WhatsApp-style Context Menu Sidebar */
+.context-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.context-menu-sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 280px;
+  background: var(--bg-primary, #fff);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  animation: slideInLeft 0.3s ease;
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.context-menu-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.context-menu-close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text-primary, #111827);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.context-menu-close:hover {
+  background: var(--bg-tertiary, #f3f4f6);
+}
+
+.context-menu-options {
+  flex: 1;
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.context-menu-item {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 12px 20px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  color: var(--text-primary, #111827);
+  transition: background 0.2s;
+}
+
+.context-menu-item:hover:not(:disabled) {
+  background: var(--bg-tertiary, #f3f4f6);
+}
+
+.context-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.context-menu-icon {
+  font-size: 20px;
+  width: 24px;
+  text-align: center;
+}
+
+.context-menu-reactions {
+  padding: 16px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.context-reaction-btn {
+  background: transparent;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.context-reaction-btn:hover {
+  background: var(--bg-tertiary, #f3f4f6);
+  transform: scale(1.1);
+}
+
+.context-reaction-btn.active {
+  background: var(--primary-color, #68939d);
+  border-color: var(--primary-color, #68939d);
+  color: white;
+}
+
+.context-reaction-btn.add-more {
+  font-size: 28px;
+  font-weight: 300;
+  color: var(--text-secondary, #6b7280);
+}
+
+.context-reaction-btn.add-more:hover {
+  background: var(--bg-tertiary, #f3f4f6);
+  color: var(--text-primary, #111827);
+}
+
+[data-theme="dark"] .context-menu-sidebar {
+  background: var(--bg-secondary, #1f2937);
+  border-right-color: var(--border-color, #4b5563);
+}
+
+[data-theme="dark"] .context-menu-item {
+  color: var(--text-primary, #f9fafb);
+}
+
+[data-theme="dark"] .context-menu-item:hover:not(:disabled) {
+  background: var(--bg-tertiary, #374151);
+}
+
+[data-theme="dark"] .context-menu-close {
+  color: var(--text-primary, #f9fafb);
+}
+
+[data-theme="dark"] .context-menu-close:hover {
+  background: var(--bg-tertiary, #374151);
+}
+
+[data-theme="dark"] .context-reaction-btn {
+  border-color: var(--border-color, #4b5563);
+}
+
+[data-theme="dark"] .context-reaction-btn:hover {
+  background: var(--bg-tertiary, #374151);
+}
+
