@@ -55,10 +55,14 @@ class VerificationService:
         mail_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
         mail_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
         
+        # Strip whitespace to check if actually empty
+        mail_username = mail_username.strip() if mail_username else ''
+        mail_password = mail_password.strip() if mail_password else ''
+        
         # DEBUG: Log current state
         print(f"[DEBUG] Email config check - Username: {'SET' if mail_username else 'NOT SET'}, Password: {'SET' if mail_password else 'NOT SET'}, Mail: {'AVAILABLE' if mail else 'NOT AVAILABLE'}")
         
-        # If not in app.config, try loading from SystemSettings database
+        # If not in app.config or empty, try loading from SystemSettings database
         if not mail_username or not mail_password:
             print("[DEBUG] Email config not in app.config, attempting to load from database...")
             try:
