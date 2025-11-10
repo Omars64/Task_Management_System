@@ -555,9 +555,47 @@ const Chat = () => {
   // Open/close message context popover
   const openContextPopover = (event, msg) => {
     event.preventDefault();
-    // Use page coordinates for a fixed-position popover
-    const x = event.pageX;
-    const y = event.pageY;
+    // Popover dimensions (approximate - will be measured if needed)
+    const popoverWidth = 220; // min-width from CSS
+    const popoverHeight = 200; // approximate height
+    const padding = 10; // padding from viewport edges
+    
+    // Get viewport dimensions
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    // Get click position
+    let x = event.pageX;
+    let y = event.pageY;
+    
+    // For sent messages (right-aligned), position popover to the left of the message
+    // For received messages (left-aligned), position popover to the right of the message
+    const isSentMessage = msg.sender_id === user.id;
+    
+    if (isSentMessage) {
+      // Position to the left of the click (for sent messages)
+      x = x - popoverWidth - 10;
+    } else {
+      // Position to the right of the click (for received messages)
+      x = x + 10;
+    }
+    
+    // Ensure popover stays within viewport horizontally
+    if (x + popoverWidth > viewportWidth - padding) {
+      x = viewportWidth - popoverWidth - padding;
+    }
+    if (x < padding) {
+      x = padding;
+    }
+    
+    // Ensure popover stays within viewport vertically
+    if (y + popoverHeight > viewportHeight - padding) {
+      y = viewportHeight - popoverHeight - padding;
+    }
+    if (y < padding) {
+      y = padding;
+    }
+    
     setContextPopover({ msg, x, y });
   };
   useEffect(() => {
