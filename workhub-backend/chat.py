@@ -644,19 +644,98 @@ def send_message(conversation_id):
         )
         
         db.session.add(message)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception as commit_error:
+            db.session.rollback()
+            print(f"[Chat API] Error committing message: {commit_error}")
+            raise
+        
+        # Eager load relationships before calling to_dict()
+        from sqlalchemy.orm import joinedload
+        message_id = message.id
+        message = ChatMessage.query.options(
+            joinedload(ChatMessage.sender),
+            joinedload(ChatMessage.recipient),
+            joinedload(ChatMessage.reply_to).joinedload(ChatMessage.sender)
+        ).get(message_id)
+        
+        if not message:
+            return jsonify({'error': 'Failed to retrieve created message'}), 500
         
         # Create notification for recipient
-        from notifications import create_notification
-        create_notification(
-            user_id=recipient_id,
-            title='New Message',
-            message=f'{current_user.name}: {content[:50]}...' if len(content) > 50 else f'{current_user.name}: {content}',
-            notif_type='chat_message',
-            related_conversation_id=conversation_id
-        )
+        try:
+            from notifications import create_notification
+            create_notification(
+                user_id=recipient_id,
+                title='New Message',
+                message=f'{current_user.name}: {content[:50]}...' if len(content) > 50 else f'{current_user.name}: {content}',
+                notif_type='chat_message',
+                related_conversation_id=conversation_id
+            )
+        except Exception as notif_error:
+            print(f"[Chat API] Warning: Failed to create notification: {notif_error}")
+            # Don't fail the request if notification fails
         
-        return jsonify({'message': 'Message sent', 'chat_message': message.to_dict()}), 201
+        # Safely serialize message
+        try:
+            msg_dict = {
+                'id': message.id,
+                'conversation_id': message.conversation_id,
+                'sender_id': message.sender_id,
+                'sender_name': message.sender.name if message.sender else 'Unknown',
+                'recipient_id': message.recipient_id,
+                'content': message.content if message.content else '',
+                'delivery_status': message.delivery_status or 'sent',
+                'is_read': getattr(message, 'is_read', False),
+                'read_at': message.read_at.isoformat() if hasattr(message, 'read_at') and message.read_at else None,
+                'created_at': message.created_at.isoformat() if message.created_at else None,
+                'updated_at': message.updated_at.isoformat() if hasattr(message, 'updated_at') and message.updated_at else None,
+                'is_edited': getattr(message, 'is_edited', False),
+                'is_deleted': getattr(message, 'is_deleted', False),
+                'reply_to': None,
+                'reactions': []
+            }
+            
+            # Handle reply_to safely
+            if message.reply_to_id and message.reply_to:
+                try:
+                    reply_content = message.reply_to.content or ''
+                    try:
+                        import json
+                        reply_data = json.loads(reply_content) if isinstance(reply_content, str) else reply_content
+                        if isinstance(reply_data, dict) and reply_data.get('type') == 'file':
+                            reply_content = f"📎 {reply_data.get('name', 'File')}"
+                        else:
+                            reply_content = reply_content[:30] + ('...' if len(reply_content) > 30 else '')
+                    except:
+                        reply_content = reply_content[:30] + ('...' if len(reply_content) > 30 else '')
+                    
+                    msg_dict['reply_to'] = {
+                        'id': message.reply_to.id,
+                        'content': reply_content,
+                        'sender_name': message.reply_to.sender.name if message.reply_to.sender else 'Unknown'
+                    }
+                except Exception as reply_error:
+                    print(f"[Chat API] Error processing reply_to: {reply_error}")
+                    msg_dict['reply_to'] = None
+            
+            return jsonify({'message': 'Message sent', 'chat_message': msg_dict}), 201
+        except Exception as dict_error:
+            import traceback
+            print(f"[Chat API] Error serializing message: {dict_error}")
+            traceback.print_exc()
+            # Return basic response even if full serialization fails
+            return jsonify({
+                'message': 'Message sent',
+                'chat_message': {
+                    'id': message.id,
+                    'conversation_id': message.conversation_id,
+                    'sender_id': message.sender_id,
+                    'content': message.content,
+                    'created_at': message.created_at.isoformat() if message.created_at else None
+                }
+            }), 201
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({'error': 'Database error occurred.'}), 500
