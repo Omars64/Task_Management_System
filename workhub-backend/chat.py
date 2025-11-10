@@ -476,25 +476,39 @@ def get_messages(conversation_id):
             return jsonify([]), 200
         
         # Eager load messages with all relationships to prevent lazy loading errors
-        messages = ChatMessage.query.options(
-            joinedload(ChatMessage.sender),
-            joinedload(ChatMessage.recipient),
-            joinedload(ChatMessage.reply_to).joinedload(ChatMessage.sender)
-        ).filter_by(
-            conversation_id=conversation_id
-        ).order_by(ChatMessage.created_at.asc()).all()
+        try:
+            messages = ChatMessage.query.options(
+                joinedload(ChatMessage.sender),
+                joinedload(ChatMessage.recipient),
+                joinedload(ChatMessage.reply_to).joinedload(ChatMessage.sender)
+            ).filter_by(
+                conversation_id=conversation_id
+            ).order_by(ChatMessage.created_at.asc()).all()
+        except Exception as messages_load_error:
+            print(f"[Chat API] Error loading messages: {messages_load_error}")
+            import traceback
+            traceback.print_exc()
+            # Return empty array instead of failing
+            return jsonify([]), 200
         
         # Load reactions separately to avoid relationship issues
-        message_ids = [msg.id for msg in messages]
         reactions_map = {}
-        if message_ids:
-            reactions = MessageReaction.query.filter(
-                MessageReaction.message_id.in_(message_ids)
-            ).all()
-            for reaction in reactions:
-                if reaction.message_id not in reactions_map:
-                    reactions_map[reaction.message_id] = []
-                reactions_map[reaction.message_id].append(reaction)
+        if messages:
+            try:
+                message_ids = [msg.id for msg in messages]
+                if message_ids:
+                    reactions = MessageReaction.query.filter(
+                        MessageReaction.message_id.in_(message_ids)
+                    ).all()
+                    for reaction in reactions:
+                        if reaction.message_id not in reactions_map:
+                            reactions_map[reaction.message_id] = []
+                        reactions_map[reaction.message_id].append(reaction)
+            except Exception as reactions_load_error:
+                print(f"[Chat API] Error loading reactions: {reactions_load_error}")
+                import traceback
+                traceback.print_exc()
+                # Continue without reactions - don't fail the entire request
         
         # Filter out messages that are hidden for current user and serialize safely
         filtered_messages = []
@@ -513,9 +527,9 @@ def get_messages(conversation_id):
                     'id': msg.id,
                     'conversation_id': msg.conversation_id,
                     'sender_id': msg.sender_id,
-                    'sender_name': msg.sender.name if msg.sender else 'Unknown',
+                    'sender_name': getattr(msg.sender, 'name', 'Unknown') if msg.sender else 'Unknown',
                     'recipient_id': msg.recipient_id,
-                    'content': msg.content if msg.content else '',
+                    'content': str(msg.content) if msg.content else '',
                     'delivery_status': msg.delivery_status or 'sent',
                     'is_read': getattr(msg, 'is_read', False),
                     'read_at': msg.read_at.isoformat() if hasattr(msg, 'read_at') and msg.read_at else None,
