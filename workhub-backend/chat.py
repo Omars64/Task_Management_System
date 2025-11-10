@@ -50,10 +50,11 @@ def get_users():
         if not current_user:
             return jsonify({'error': 'Unauthorized'}), 401
         
-        # Return ALL users except current user - no role restrictions
-        # All roles (super_admin, admin, manager, team_lead, developer, viewer) can chat with everyone
+        # Return only approved users (same as Users window) excluding current user
+        # This prevents showing pending/invited/non-registered contacts
         users = User.query.filter(
-            User.id != current_user.id
+            (User.id != current_user.id) &
+            (User.signup_status == 'approved')
         ).all()
         
         users_list = [{
