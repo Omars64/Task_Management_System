@@ -47,48 +47,59 @@ class VerificationService:
         # Priority: app.config (from env vars or SystemSettings) > SystemSettings database
         from flask import current_app
         app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
-        mail_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
-        mail_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
         
-        # If not in app.config, try loading from SystemSettings database
-        if not mail_username or not mail_password:
-            try:
-                from models import SystemSettings
-                settings = SystemSettings.query.first()
-                if settings and settings.smtp_username and settings.smtp_password:
-                    mail_username = settings.smtp_username
-                    mail_password = settings.smtp_password
-                    # Update app.config for future use
-                    app.config['MAIL_USERNAME'] = mail_username
-                    app.config['MAIL_PASSWORD'] = mail_password
-                    app.config['SMTP_USERNAME'] = mail_username
-                    app.config['SMTP_PASSWORD'] = mail_password
-                    if settings.smtp_server:
-                        app.config['MAIL_SERVER'] = settings.smtp_server
-                        app.config['SMTP_SERVER'] = settings.smtp_server
-                    if settings.smtp_port:
-                        app.config['MAIL_PORT'] = settings.smtp_port
-                        app.config['SMTP_PORT'] = settings.smtp_port
-                    if settings.smtp_from_email:
-                        app.config['MAIL_DEFAULT_SENDER'] = settings.smtp_from_email
-                        app.config['SMTP_FROM_EMAIL'] = settings.smtp_from_email
-                    # Reinitialize mail with new config
-                    # Create a new Mail instance with updated config
-                    from flask_mail import Mail
-                    new_mail = Mail(app)
-                    app.extensions['mail'] = new_mail
-                    # Use the new mail instance from app.extensions
-                    mail = app.extensions.get('mail')
-            except Exception as e:
-                print(f"Could not load email config from SystemSettings: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        # Get mail instance from app.extensions (in case it was updated)
+        # Get mail instance from app.extensions first
         if not mail:
             mail = app.extensions.get('mail')
         
+        mail_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
+        mail_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
+        
+        # DEBUG: Log current state
+        print(f"[DEBUG] Email config check - Username: {'SET' if mail_username else 'NOT SET'}, Password: {'SET' if mail_password else 'NOT SET'}, Mail: {'AVAILABLE' if mail else 'NOT AVAILABLE'}")
+        
+        # If not in app.config, try loading from SystemSettings database
+        if not mail_username or not mail_password:
+            print("[DEBUG] Email config not in app.config, attempting to load from database...")
+            try:
+                from models import SystemSettings
+                settings = SystemSettings.query.first()
+                if settings:
+                    print(f"[DEBUG] Found SystemSettings: username={'SET' if settings.smtp_username else 'NOT SET'}, password={'SET' if settings.smtp_password else 'NOT SET'}")
+                    if settings.smtp_username and settings.smtp_password:
+                        mail_username = settings.smtp_username
+                        mail_password = settings.smtp_password
+                        # Update app.config for future use
+                        app.config['MAIL_USERNAME'] = mail_username
+                        app.config['MAIL_PASSWORD'] = mail_password
+                        app.config['SMTP_USERNAME'] = mail_username
+                        app.config['SMTP_PASSWORD'] = mail_password
+                        if settings.smtp_server:
+                            app.config['MAIL_SERVER'] = settings.smtp_server
+                            app.config['SMTP_SERVER'] = settings.smtp_server
+                        if settings.smtp_port:
+                            app.config['MAIL_PORT'] = settings.smtp_port
+                            app.config['SMTP_PORT'] = settings.smtp_port
+                        if settings.smtp_from_email:
+                            app.config['MAIL_DEFAULT_SENDER'] = settings.smtp_from_email
+                            app.config['SMTP_FROM_EMAIL'] = settings.smtp_from_email
+                        # Reinitialize mail with new config - Flask-Mail needs to be recreated
+                        from flask_mail import Mail
+                        new_mail = Mail(app)
+                        app.extensions['mail'] = new_mail
+                        mail = new_mail
+                        print(f"[DEBUG] Email config loaded from database and Flask-Mail reinitialized")
+                    else:
+                        print(f"[DEBUG] SystemSettings found but credentials are empty")
+                else:
+                    print(f"[DEBUG] No SystemSettings record found in database")
+            except Exception as e:
+                print(f"[ERROR] Could not load email config from SystemSettings: {e}")
+                import traceback
+                traceback.print_exc()
+        
         mail_configured = mail and mail_username and mail_password
+        print(f"[DEBUG] Final check - mail_configured: {mail_configured} (mail={'YES' if mail else 'NO'}, username={'YES' if mail_username else 'NO'}, password={'YES' if mail_password else 'NO'})")
         
         # Try to send email - use a timeout to avoid blocking too long
         email_sent = False
