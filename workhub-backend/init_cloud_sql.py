@@ -350,6 +350,22 @@ def _do_init():
     except Exception as e:
         print(f"⚠ Warning ensuring chat_messages columns: {e}")
     
+    # Cleanup any corrupted emoji reactions stored previously
+    print("\nCleaning up corrupted emoji reactions (if any)...")
+    try:
+        with db.engine.begin() as conn:
+            # Remove reactions with empty or placeholder emojis
+            deleted = conn.execute(text("""
+                DELETE FROM dbo.message_reactions 
+                WHERE emoji IS NULL 
+                   OR LTRIM(RTRIM(CAST(emoji AS NVARCHAR(MAX)))) = '' 
+                   OR CAST(emoji AS NVARCHAR(MAX)) = '??'
+            """))
+            # Note: rowcount may be -1 depending on driver; this is informational
+            print("✓ Emoji cleanup executed")
+    except Exception as e:
+        print(f"⚠ Warning cleaning corrupted emojis: {e}")
+    
     # Ensure message_reactions.emoji column is large enough for all emojis
     print("\nEnsuring message_reactions.emoji column size is sufficient...")
     try:

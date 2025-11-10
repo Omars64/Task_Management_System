@@ -32,7 +32,8 @@ const Chat = () => {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [showReactionPicker, setShowReactionPicker] = useState(null); // messageId or null
   const [replyingTo, setReplyingTo] = useState(null); // messageId or null
-  const [contextMenuMessage, setContextMenuMessage] = useState(null); // message object for WhatsApp-style sidebar
+  // Context popover anchored near the clicked message (WhatsApp-like)
+  const [contextPopover, setContextPopover] = useState(null); // { msg, x, y }
   const messagesEndRef = useRef(null);
   const messageIntervalRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -551,6 +552,25 @@ const Chat = () => {
     return '';
   };
 
+  // Open/close message context popover
+  const openContextPopover = (event, msg) => {
+    event.preventDefault();
+    // Use page coordinates for a fixed-position popover
+    const x = event.pageX;
+    const y = event.pageY;
+    setContextPopover({ msg, x, y });
+  };
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!contextPopover) return;
+      if (!e.target.closest?.('.message-context-popover')) {
+        setContextPopover(null);
+      }
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [contextPopover]);
+
   const groupReactions = (reactions) => {
     const grouped = {};
     reactions.forEach(r => {
@@ -792,6 +812,13 @@ const Chat = () => {
                   <div
                     key={msg.id}
                     className={`message ${msg.sender_id === user.id ? 'sent' : 'received'}`}
+                    onContextMenu={(e) => openContextPopover(e, msg)}
+                    onClick={(e) => {
+                      // Click opens popover only when not clicking on reaction bubbles
+                      if (!e.target.closest('.message-reactions')) {
+                        openContextPopover(e, msg);
+                      }
+                    }}
                   >
                     <div className="message-content">
                       {msg.sender_id !== user.id && (
@@ -885,35 +912,12 @@ const Chat = () => {
                           return rendered;
                         })()
                       )}
-                      <div 
-                        className="message-content-wrapper"
-                        onClick={(e) => {
-                          // Only open sidebar if clicking on the message content, not on reactions or other elements
-                          if (!e.target.closest('.message-reactions') && !e.target.closest('.message-actions-toggle')) {
-                            setContextMenuMessage(msg);
-                          }
-                        }}
-                      >
-                        <div className="message-footer">
-                          <div className="message-actions">
-                            <button
-                              type="button"
-                              className="message-actions-toggle"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setContextMenuMessage(msg);
-                              }}
-                              title="More actions"
-                            >
-                              <FiMoreVertical />
-                            </button>
-                          </div>
-                          <div className="message-time-status">
-                            <span className="message-time">
-                              {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                            </span>
-                            {getDeliveryIcon(msg)}
-                          </div>
+                      <div className="message-footer">
+                        <div className="message-time-status">
+                          <span className="message-time">
+                            {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                          </span>
+                          {getDeliveryIcon(msg)}
                         </div>
                       </div>
                       {msg.reactions && msg.reactions.length > 0 && (
@@ -942,46 +946,9 @@ const Chat = () => {
                               </button>
                             );
                           })}
-                          <button
-                            type="button"
-                            className="add-reaction-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowReactionPicker(showReactionPicker === msg.id ? null : msg.id);
-                            }}
-                            title="Add reaction"
-                          >
-                            <FiSmile />
-                          </button>
-                          {showReactionPicker === msg.id && (
-                            <ReactionPicker
-                              onSelect={(emoji) => handleAddReaction(msg.id, emoji)}
-                              onClose={() => setShowReactionPicker(null)}
-                            />
-                          )}
                         </div>
                       )}
-                      {(!msg.reactions || msg.reactions.length === 0) && (
-                        <div className="message-reactions-empty">
-                          <button
-                            type="button"
-                            className="add-reaction-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowReactionPicker(showReactionPicker === msg.id ? null : msg.id);
-                            }}
-                            title="Add reaction"
-                          >
-                            <FiSmile />
-                          </button>
-                          {showReactionPicker === msg.id && (
-                            <ReactionPicker
-                              onSelect={(emoji) => handleAddReaction(msg.id, emoji)}
-                              onClose={() => setShowReactionPicker(null)}
-                            />
-                          )}
-                        </div>
-                      )}
+                      {/* No explicit add-reaction button to mimic WhatsApp */}
                     </div>
                   </div>
                 ))}
@@ -1113,120 +1080,54 @@ const Chat = () => {
         </div>
       </div>
     )}
-    
-    {/* WhatsApp-style Context Menu Sidebar */}
-    {contextMenuMessage && (
-      <>
-        <div 
-          className="context-menu-overlay"
-          onClick={() => setContextMenuMessage(null)}
-        />
-        <div className="context-menu-sidebar">
-          <div className="context-menu-header">
-            <button 
-              className="context-menu-close"
-              onClick={() => setContextMenuMessage(null)}
-            >
-              <FiX />
-            </button>
-          </div>
-          <div className="context-menu-options">
-            <button 
-              type="button"
-              className="context-menu-item"
-              onClick={() => {
-                setReplyingTo(contextMenuMessage.id);
-                setContextMenuMessage(null);
-              }}
-            >
-              <span className="context-menu-icon">↩️</span>
-              <span>Reply</span>
-            </button>
-            {contextMenuMessage.sender_id === user.id && (
-              <button 
+
+    {/* WhatsApp-style context popover near the clicked message */}
+    {contextPopover && (
+      <div
+        className="message-context-popover"
+        style={{ top: contextPopover.y, left: contextPopover.x, position: 'fixed' }}
+      >
+        <div className="popover-reactions">
+          {['👍','❤️','😂','😮','😢','🙏'].map(emo => {
+            const hasReaction = contextPopover.msg.reactions?.some(r => {
+              const normalized = normalizeEmoji(r.emoji);
+              return normalized === emo && r.user_id === user.id;
+            });
+            return (
+              <button
+                key={emo}
                 type="button"
-                className="context-menu-item"
-                disabled={!canModifyMessage(contextMenuMessage) || contextMenuMessage.is_deleted}
+                className={`reaction-btn ${hasReaction ? 'active' : ''}`}
                 onClick={() => {
-                  startEditMessage(contextMenuMessage);
-                  setContextMenuMessage(null);
+                  if (hasReaction) {
+                    const userReaction = contextPopover.msg.reactions.find(r => {
+                      const normalized = normalizeEmoji(r.emoji);
+                      return normalized === emo && r.user_id === user.id;
+                    });
+                    if (userReaction) handleRemoveReaction(contextPopover.msg.id, userReaction.id);
+                  } else {
+                    handleAddReaction(contextPopover.msg.id, emo);
+                  }
+                  setContextPopover(null);
                 }}
+                title={emo}
               >
-                <span className="context-menu-icon">✏️</span>
-                <span>Edit</span>
+                {emo}
               </button>
-            )}
-            <button 
-              type="button"
-              className="context-menu-item"
-              onClick={() => {
-                deleteForMe(contextMenuMessage);
-                setContextMenuMessage(null);
-              }}
-            >
-              <span className="context-menu-icon">🗑️</span>
-              <span>Delete for me</span>
-            </button>
-            {contextMenuMessage.sender_id === user.id && (
-              <button 
-                type="button"
-                className="context-menu-item"
-                disabled={!canModifyMessage(contextMenuMessage) || contextMenuMessage.is_deleted}
-                onClick={() => {
-                  deleteForEveryone(contextMenuMessage);
-                  setContextMenuMessage(null);
-                }}
-              >
-                <span className="context-menu-icon">🗑️</span>
-                <span>Delete for everyone</span>
-              </button>
-            )}
-          </div>
-          <div className="context-menu-reactions">
-            {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => {
-              const hasReaction = contextMenuMessage.reactions?.some(r => {
-                const normalized = normalizeEmoji(r.emoji);
-                return normalized === emoji && r.user_id === user.id;
-              });
-              return (
-                <button
-                  key={emoji}
-                  type="button"
-                  className={`context-reaction-btn ${hasReaction ? 'active' : ''}`}
-                  onClick={() => {
-                    if (hasReaction) {
-                      const userReaction = contextMenuMessage.reactions.find(r => {
-                        const normalized = normalizeEmoji(r.emoji);
-                        return normalized === emoji && r.user_id === user.id;
-                      });
-                      if (userReaction) {
-                        handleRemoveReaction(contextMenuMessage.id, userReaction.id);
-                      }
-                    } else {
-                      handleAddReaction(contextMenuMessage.id, emoji);
-                    }
-                    setContextMenuMessage(null);
-                  }}
-                  title={emoji}
-                >
-                  {emoji}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              className="context-reaction-btn add-more"
-              onClick={() => {
-                setShowReactionPicker(contextMenuMessage.id);
-                setContextMenuMessage(null);
-              }}
-              title="Add more reactions"
-            >
-              +
-            </button>
-          </div>
+            );
+          })}
         </div>
-      </>
+        <div className="popover-actions">
+          <button type="button" onClick={() => { setReplyingTo(contextPopover.msg.id); setContextPopover(null); }}>Reply</button>
+          {contextPopover.msg.sender_id === user.id && (
+            <button type="button" disabled={!canModifyMessage(contextPopover.msg) || contextPopover.msg.is_deleted} onClick={() => { startEditMessage(contextPopover.msg); setContextPopover(null); }}>Edit</button>
+          )}
+          <button type="button" onClick={() => { deleteForMe(contextPopover.msg); setContextPopover(null); }}>Delete for me</button>
+          {contextPopover.msg.sender_id === user.id && (
+            <button type="button" disabled={!canModifyMessage(contextPopover.msg) || contextPopover.msg.is_deleted} onClick={() => { deleteForEveryone(contextPopover.msg); setContextPopover(null); }}>Delete for everyone</button>
+          )}
+        </div>
+      </div>
     )}
     </>
   );

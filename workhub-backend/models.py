@@ -719,6 +719,21 @@ class ChatMessage(db.Model):
             except:
                 pass
         
+        # Reactions - filter out corrupted/invalid emojis server-side
+        reactions_list = []
+        try:
+            if hasattr(self, 'reactions') and self.reactions:
+                for r in self.reactions:
+                    try:
+                        d = r.to_dict()
+                        emo = d.get('emoji') if isinstance(d, dict) else None
+                        if d and emo and '??' not in emo:
+                            reactions_list.append(d)
+                    except Exception:
+                        continue
+        except Exception:
+            reactions_list = []
+
         # Use getattr for ALL potentially missing attributes to prevent AttributeError
         return {
             'id': self.id,
@@ -735,7 +750,7 @@ class ChatMessage(db.Model):
             'updated_at': getattr(self, 'updated_at', None).isoformat() if getattr(self, 'updated_at', None) else None,
             'is_edited': getattr(self, 'is_edited', False),
             'is_deleted': getattr(self, 'is_deleted', False),
-            'reactions': [r.to_dict() for r in self.reactions] if hasattr(self, 'reactions') and self.reactions else []
+            'reactions': reactions_list
         }
 
 
@@ -770,8 +785,15 @@ class MessageReaction(db.Model):
                 emoji_value = str(emoji_value)
             # Remove any null bytes or invalid characters
             emoji_value = emoji_value.replace('\0', '').strip()
+            # Filter out corrupted placeholders
+            try:
+                _ = emoji_value.encode('utf-8').decode('utf-8')
+            except Exception:
+                emoji_value = ''
+            if '??' in emoji_value or '\ufffd' in emoji_value:
+                emoji_value = ''
         
-        return {
+        result = {
             'id': self.id,
             'message_id': self.message_id,
             'user_id': self.user_id,
@@ -779,3 +801,4 @@ class MessageReaction(db.Model):
             'emoji': emoji_value,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+        return result
