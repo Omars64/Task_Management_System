@@ -120,7 +120,24 @@ def create_app():
     app.config['EMAIL_NOTIFICATIONS_ENABLED'] = (env_enabled.lower() == 'true') if isinstance(env_enabled, str) else bool(app.config['MAIL_USERNAME'])
     app.config['FRONTEND_URL'] = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
     
-    # Initialize Flask-Mail for email verification codes (AFTER config is set)
+    # CRITICAL: Try to load email config from database BEFORE initializing Flask-Mail
+    # This ensures Flask-Mail is initialized with the correct credentials
+    with app.app_context():
+        try:
+            # Ensure database is initialized first
+            try:
+                from init_cloud_sql import init_database
+                init_database()
+            except ImportError:
+                db.create_all()
+            
+            # Now try to load email config from database
+            load_email_config_from_db()
+        except Exception as e:
+            logging.getLogger('workhub').warning(f"Could not pre-load email config: {e}")
+            # Continue anyway - config will be loaded on first request
+    
+    # Initialize Flask-Mail for email verification codes (AFTER trying to load config from DB)
     mail = Mail(app)
     app.extensions['mail'] = mail
     

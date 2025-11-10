@@ -73,10 +73,20 @@ class VerificationService:
                         app.config['MAIL_DEFAULT_SENDER'] = settings.smtp_from_email
                         app.config['SMTP_FROM_EMAIL'] = settings.smtp_from_email
                     # Reinitialize mail with new config
-                    if 'mail' in app.extensions:
-                        app.extensions['mail'].init_app(app)
+                    # Create a new Mail instance with updated config
+                    from flask_mail import Mail
+                    new_mail = Mail(app)
+                    app.extensions['mail'] = new_mail
+                    # Use the new mail instance from app.extensions
+                    mail = app.extensions.get('mail')
             except Exception as e:
                 print(f"Could not load email config from SystemSettings: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Get mail instance from app.extensions (in case it was updated)
+        if not mail:
+            mail = app.extensions.get('mail')
         
         mail_configured = mail and mail_username and mail_password
         
@@ -166,8 +176,12 @@ class VerificationService:
                         app.config['MAIL_DEFAULT_SENDER'] = settings.smtp_from_email
                         app.config['SMTP_FROM_EMAIL'] = settings.smtp_from_email
                     # Reinitialize mail with new config
-                    if 'mail' in app.extensions:
-                        app.extensions['mail'].init_app(app)
+                    # Create a new Mail instance with updated config
+                    from flask_mail import Mail
+                    new_mail = Mail(app)
+                    app.extensions['mail'] = new_mail
+                    # Update the mail variable passed to this function
+                    mail = new_mail
             except Exception as e:
                 print(f"Could not load email config from SystemSettings: {e}")
         
