@@ -350,6 +350,10 @@ class SystemSettings(db.Model):
     smtp_from_name = db.Column(db.String(255), default='WorkHub Task Management')
     
     def to_dict(self):
+        # Check if email is configured (has username and password)
+        email_configured = bool(self.smtp_username and self.smtp_password and 
+                               self.smtp_username.strip() and self.smtp_password.strip())
+        
         return {
             'id': self.id,
             'site_title': self.site_title,
@@ -361,7 +365,8 @@ class SystemSettings(db.Model):
             'smtp_username': self.smtp_username,
             # Don't expose password
             'smtp_from_email': self.smtp_from_email,
-            'smtp_from_name': self.smtp_from_name
+            'smtp_from_name': self.smtp_from_name,
+            'email_configured': email_configured  # Add email configuration status
         }
 
 

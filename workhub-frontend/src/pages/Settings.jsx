@@ -566,10 +566,122 @@ const Settings = () => {
                 Enable Email Notifications
               </label>
             </div>
+            
+            {/* Email Configuration Status */}
+            <div className="form-group" style={{ 
+              padding: '16px', 
+              backgroundColor: systemSettings.email_configured ? '#f0fdf4' : '#fef2f2',
+              border: `1px solid ${systemSettings.email_configured ? '#86efac' : '#fca5a5'}`,
+              borderRadius: '8px',
+              marginTop: '20px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <span style={{ 
+                  fontSize: '1.1rem',
+                  fontWeight: 600,
+                  color: systemSettings.email_configured ? '#16a34a' : '#dc2626'
+                }}>
+                  {systemSettings.email_configured ? '✓' : '✗'} Email Configuration
+                </span>
+              </div>
+              <p style={{ 
+                margin: 0, 
+                fontSize: '0.9rem',
+                color: systemSettings.email_configured ? '#166534' : '#991b1b'
+              }}>
+                {systemSettings.email_configured 
+                  ? 'Email is properly configured and ready to send verification codes and notifications.'
+                  : 'Email is not configured. Please set SMTP username and password in the fields below to enable email functionality.'}
+              </p>
+              {systemSettings.smtp_server && (
+                <p style={{ margin: '8px 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>
+                  SMTP Server: {systemSettings.smtp_server}:{systemSettings.smtp_port || 587}
+                </p>
+              )}
+            </div>
+            
+            {/* SMTP Configuration Fields */}
+            <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--border-color)' }}>
+              <h3 style={{ marginBottom: '16px', color: 'var(--text-color)' }}>SMTP Email Configuration</h3>
+              
+              <div className="form-group">
+                <label className="form-label">SMTP Server</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={systemSettings.smtp_server || 'smtp.gmail.com'}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, smtp_server: e.target.value })}
+                  placeholder="smtp.gmail.com"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">SMTP Port</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={systemSettings.smtp_port || 587}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, smtp_port: parseInt(e.target.value) || 587 })}
+                  placeholder="587"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">SMTP Username (Email)</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  value={systemSettings.smtp_username || ''}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, smtp_username: e.target.value })}
+                  placeholder="your-email@gmail.com"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">SMTP Password (App Password)</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  value={systemSettings.smtp_password || ''}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, smtp_password: e.target.value })}
+                  placeholder="Enter Gmail app password"
+                />
+                <small style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '4px', display: 'block' }}>
+                  For Gmail: Use an App Password, not your regular password. Generate at{' '}
+                  <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>
+                    myaccount.google.com/apppasswords
+                  </a>
+                </small>
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">From Email</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  value={systemSettings.smtp_from_email || ''}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, smtp_from_email: e.target.value })}
+                  placeholder="noreply@workhub.com"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">From Name</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={systemSettings.smtp_from_name || ''}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, smtp_from_name: e.target.value })}
+                  placeholder="WorkHub Task Management"
+                />
+              </div>
+            </div>
+            
             <button 
               type="submit" 
               className="btn btn-primary"
               disabled={Object.keys(errors).length > 0}
+              style={{ marginTop: '24px' }}
             >
               Save System Settings
             </button>

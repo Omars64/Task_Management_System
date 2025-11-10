@@ -70,11 +70,15 @@ def create_app():
     
     # Function to load email config from SystemSettings database (fallback if env vars not set)
     def load_email_config_from_db():
-        """Load email configuration from SystemSettings if env vars are not set"""
+        """Load email configuration from SystemSettings if env vars are not set or empty"""
         try:
             from models import SystemSettings
-            # Only load from DB if env vars are not set
-            if not app.config.get('MAIL_USERNAME') or not app.config.get('MAIL_PASSWORD'):
+            # Check if we have valid credentials in app.config
+            current_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
+            current_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
+            
+            # Only load from DB if env vars are not set or are empty strings
+            if not current_username or not current_password or current_username.strip() == '' or current_password.strip() == '':
                 settings = SystemSettings.query.first()
                 if settings and settings.smtp_username and settings.smtp_password:
                     # Update config from database
@@ -108,8 +112,14 @@ def create_app():
                     
                     logging.getLogger('workhub').info("Email configuration loaded from SystemSettings database")
                     return True
+                else:
+                    logging.getLogger('workhub').debug("SystemSettings found but credentials are empty or missing")
+            else:
+                logging.getLogger('workhub').debug("Email credentials already present in app.config, skipping database load")
         except Exception as e:
             logging.getLogger('workhub').warning(f"Could not load email config from database: {e}")
+            import traceback
+            logging.getLogger('workhub').debug(traceback.format_exc())
         return False
     
     # Store function for later use
@@ -132,14 +142,32 @@ def create_app():
                 db.create_all()
             
             # Now try to load email config from database
-            load_email_config_from_db()
+            config_loaded = load_email_config_from_db()
+            if config_loaded:
+                logging.getLogger('workhub').info("Email configuration pre-loaded from database successfully")
+            else:
+                logging.getLogger('workhub').info("Email configuration not found in database, will check on first request")
         except Exception as e:
-            logging.getLogger('workhub').warning(f"Could not pre-load email config: {e}")
+            # Use print instead of logging for Unicode characters on Windows
+            error_msg = str(e).encode('ascii', 'replace').decode('ascii')
+            logging.getLogger('workhub').warning(f"Could not pre-load email config: {error_msg}")
+            import traceback
+            try:
+                logging.getLogger('workhub').debug(traceback.format_exc())
+            except:
+                pass  # Ignore Unicode errors in traceback
             # Continue anyway - config will be loaded on first request
     
     # Initialize Flask-Mail for email verification codes (AFTER trying to load config from DB)
+    # Flask-Mail reads from app.config, so if we loaded from DB, it will use those values
     mail = Mail(app)
     app.extensions['mail'] = mail
+    
+    # Log final email config status
+    if app.config.get('MAIL_USERNAME') and app.config.get('MAIL_PASSWORD'):
+        logging.getLogger('workhub').info(f"Flask-Mail initialized with username: {app.config.get('MAIL_USERNAME')}")
+    else:
+        logging.getLogger('workhub').warning("Flask-Mail initialized without credentials - will load from DB on first use")
     
     # Initialize email service
     email_service.init_app(app)
