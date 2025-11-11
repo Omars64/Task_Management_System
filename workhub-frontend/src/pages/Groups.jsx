@@ -421,6 +421,10 @@ const Groups = () => {
       if (!e.target.closest('.reaction-picker-popup') && !e.target.closest('.add-reaction-btn')) {
         setShowReactionPicker(null);
       }
+      // Close invite popover when clicking outside
+      if (!e.target.closest('[data-invites-popover]') && !e.target.closest('[data-invites-button]')) {
+        setShowInvites(false);
+      }
     };
     document.addEventListener('click', onDocClick);
     return () => document.removeEventListener('click', onDocClick);
@@ -505,7 +509,8 @@ const Groups = () => {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
                   className="btn btn-sm"
-                  onClick={() => setShowInvites(v => !v)}
+                  data-invites-button
+                  onClick={(e) => { e.stopPropagation(); setShowInvites(v => !v); }}
                   style={{ position: 'relative', padding: '6px 10px', fontSize: 12 }}
                   title="Pending group invites"
                 >
@@ -526,20 +531,22 @@ const Groups = () => {
               </div>
               {showInvites && (
                 <div
+                  data-invites-popover
                   style={{
                     position: 'absolute',
                     right: 0,
                     top: '100%',
                     marginTop: 8,
-                    width: 320,
-                    maxHeight: 260,
+                    width: typeof window !== 'undefined' ? Math.min(320, window.innerWidth - 40) : 320,
+                    maxHeight: typeof window !== 'undefined' ? Math.min(260, window.innerHeight - 200) : 260,
                     background: '#ffffff',
                     border: '1px solid #e5e7eb',
                     borderRadius: 8,
                     boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-                    zIndex: 50,
+                    zIndex: 1000,
                     overflow: 'hidden',
                   }}
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <div style={{ padding: 10, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>
                     Pending Invitations
@@ -845,7 +852,8 @@ const Groups = () => {
                     {typing.map(t => t.name).join(', ')} typing...
                   </div>
                 )}
-                <form className="message-input-form" onSubmit={send}
+              </div>
+              <form className="message-input-form" onSubmit={send}
                   onDragOver={(e) => { e.preventDefault(); }}
                   onDrop={(e) => {
                     e.preventDefault();
@@ -922,7 +930,6 @@ const Groups = () => {
                     </div>
                   )}
                 </form>
-              </div>
             </>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
