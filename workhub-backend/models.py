@@ -351,8 +351,10 @@ class SystemSettings(db.Model):
     
     def to_dict(self):
         # Check if email is configured (has username and password)
-        email_configured = bool(self.smtp_username and self.smtp_password and 
-                               self.smtp_username.strip() and self.smtp_password.strip())
+        # Handle None values properly
+        username = self.smtp_username if self.smtp_username else ''
+        password = self.smtp_password if self.smtp_password else ''
+        email_configured = bool(username.strip() and password.strip())
         
         return {
             'id': self.id,

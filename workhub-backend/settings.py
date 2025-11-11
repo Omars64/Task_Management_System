@@ -24,7 +24,25 @@ def get_system_settings():
             db.session.add(settings)
             db.session.commit()
         
-        return jsonify(settings.to_dict()), 200
+        # Get the settings dict
+        settings_dict = settings.to_dict()
+        
+        # Also check if email is actually configured in app.config (runtime check)
+        from flask import current_app
+        app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
+        
+        # Check if credentials are loaded in app.config
+        app_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
+        app_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
+        app_username = app_username.strip() if app_username else ''
+        app_password = app_password.strip() if app_password else ''
+        app_email_configured = bool(app_username and app_password)
+        
+        # Use the more accurate status (either DB has it OR app.config has it)
+        settings_dict['email_configured'] = settings_dict['email_configured'] or app_email_configured
+        settings_dict['email_configured_in_app'] = app_email_configured  # Additional info
+        
+        return jsonify(settings_dict), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

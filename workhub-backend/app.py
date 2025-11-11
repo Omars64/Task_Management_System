@@ -77,43 +77,56 @@ def create_app():
             current_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
             current_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
             
+            # Strip whitespace to check if actually empty
+            current_username = current_username.strip() if current_username else ''
+            current_password = current_password.strip() if current_password else ''
+            
             # Only load from DB if env vars are not set or are empty strings
-            if not current_username or not current_password or current_username.strip() == '' or current_password.strip() == '':
+            if not current_username or not current_password:
                 settings = SystemSettings.query.first()
-                if settings and settings.smtp_username and settings.smtp_password:
-                    # Update config from database
-                    if settings.smtp_server:
-                        app.config['MAIL_SERVER'] = settings.smtp_server
-                        app.config['SMTP_SERVER'] = settings.smtp_server
-                    if settings.smtp_port:
-                        app.config['MAIL_PORT'] = settings.smtp_port
-                        app.config['SMTP_PORT'] = settings.smtp_port
-                    if settings.smtp_username:
-                        app.config['MAIL_USERNAME'] = settings.smtp_username
-                        app.config['SMTP_USERNAME'] = settings.smtp_username
-                    if settings.smtp_password:
-                        app.config['MAIL_PASSWORD'] = settings.smtp_password
-                        app.config['SMTP_PASSWORD'] = settings.smtp_password
-                    if settings.smtp_from_email:
-                        app.config['MAIL_DEFAULT_SENDER'] = settings.smtp_from_email
-                        app.config['SMTP_FROM_EMAIL'] = settings.smtp_from_email
-                    if settings.smtp_from_name:
-                        app.config['SMTP_FROM_NAME'] = settings.smtp_from_name
+                if settings:
+                    # Check if database has credentials (handle None values)
+                    db_username = settings.smtp_username if settings.smtp_username else ''
+                    db_password = settings.smtp_password if settings.smtp_password else ''
+                    db_username = db_username.strip() if db_username else ''
+                    db_password = db_password.strip() if db_password else ''
                     
-                    # Reinitialize Flask-Mail with new config
-                    if 'mail' in app.extensions:
-                        app.extensions['mail'].init_app(app)
+                    if db_username and db_password:
+                        # Update config from database
+                        if settings.smtp_server:
+                            app.config['MAIL_SERVER'] = settings.smtp_server
+                            app.config['SMTP_SERVER'] = settings.smtp_server
+                        if settings.smtp_port:
+                            app.config['MAIL_PORT'] = settings.smtp_port
+                            app.config['SMTP_PORT'] = settings.smtp_port
+                        if settings.smtp_username:
+                            app.config['MAIL_USERNAME'] = settings.smtp_username
+                            app.config['SMTP_USERNAME'] = settings.smtp_username
+                        if settings.smtp_password:
+                            app.config['MAIL_PASSWORD'] = settings.smtp_password
+                            app.config['SMTP_PASSWORD'] = settings.smtp_password
+                        if settings.smtp_from_email:
+                            app.config['MAIL_DEFAULT_SENDER'] = settings.smtp_from_email
+                            app.config['SMTP_FROM_EMAIL'] = settings.smtp_from_email
+                        if settings.smtp_from_name:
+                            app.config['SMTP_FROM_NAME'] = settings.smtp_from_name
+                        
+                        # Reinitialize Flask-Mail with new config
+                        if 'mail' in app.extensions:
+                            app.extensions['mail'].init_app(app)
+                        else:
+                            mail = Mail(app)
+                            app.extensions['mail'] = mail
+                        
+                        # Reinitialize email service
+                        email_service.init_app(app)
+                        
+                        logging.getLogger('workhub').info("Email configuration loaded from SystemSettings database")
+                        return True
                     else:
-                        mail = Mail(app)
-                        app.extensions['mail'] = mail
-                    
-                    # Reinitialize email service
-                    email_service.init_app(app)
-                    
-                    logging.getLogger('workhub').info("Email configuration loaded from SystemSettings database")
-                    return True
+                        logging.getLogger('workhub').debug("SystemSettings found but credentials are empty or missing")
                 else:
-                    logging.getLogger('workhub').debug("SystemSettings found but credentials are empty or missing")
+                    logging.getLogger('workhub').debug("No SystemSettings record found in database")
             else:
                 logging.getLogger('workhub').debug("Email credentials already present in app.config, skipping database load")
         except Exception as e:
