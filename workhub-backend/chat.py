@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
-from models import db, User, ChatConversation, ChatMessage, MessageReaction
+from models import db, User, ChatConversation, ChatMessage, MessageReaction, Notification
 from models import ChatGroup, ChatGroupMember, GroupMessage, GroupMessageRead
 from auth import get_current_user
 from notifications import create_notification
