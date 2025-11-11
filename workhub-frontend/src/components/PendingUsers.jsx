@@ -99,10 +99,15 @@ const PendingUsers = () => {
     addToast(`Rejecting ${userName}...`, { type: 'info', timeout: 2000 });
 
     try {
-      await authAPI.rejectUser(userId, reason);
-      addToast(`${userName}'s signup has been rejected and user has been notified.`, { type: 'success' });
-      fetchPendingUsers(); // Refresh list
+      const res = await authAPI.rejectUser(userId, reason);
+      const emailQueued = !!res?.data?.email_queued;
+      addToast(`${userName}'s signup has been rejected.${emailQueued ? ' Email notification sent.' : ' Email notification queued/unavailable.'}`, { type: 'success' });
+      // Refresh both lists to reflect movement
+      fetchPendingUsers();
+      fetchRejectedUsers();
     } catch (error) {
+      // If backend already applied the change, ensure UI reflects it
+      await Promise.allSettled([fetchPendingUsers(), fetchRejectedUsers()]);
       addToast(error.response?.data?.error || 'Failed to reject user', { type: 'error' });
       // Reopen modal if error occurred
       const user = pendingUsers.find(u => u.id === userId);

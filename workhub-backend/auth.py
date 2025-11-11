@@ -684,6 +684,7 @@ def reject_user(user_id):
     
     # Send rejection email in background thread to avoid blocking the API response
     mail = current_app.extensions.get('mail')
+    email_queued = False
     if mail:
         import threading
         app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
@@ -694,10 +695,13 @@ def reject_user(user_id):
                     verification_service.send_rejection_email(user, reason, mail)
             except Exception as e:
                 print(f"Error sending rejection email in background: {str(e)}")
-        
-        # Start email sending in background thread
-        thread = threading.Thread(target=send_email_async, daemon=True)
-        thread.start()
+        try:
+            # Start email sending in background thread
+            thread = threading.Thread(target=send_email_async, daemon=True)
+            thread.start()
+            email_queued = True
+        except Exception as thread_err:
+            print(f"Failed to start rejection email thread: {thread_err}")
 
     # Ensure attributes are loaded after commit to avoid expired-state lazy loads
     try:
@@ -720,7 +724,8 @@ def reject_user(user_id):
 
     return jsonify({
         "message": "User rejected",
-        "user": user_dict
+        "user": user_dict,
+        "email_queued": email_queued
     }), 200
 
 
