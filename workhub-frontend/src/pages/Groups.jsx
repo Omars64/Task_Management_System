@@ -48,6 +48,7 @@ const Groups = () => {
   const messagesContainerRef = useRef(null);
   const typingTimerRef = useRef(null);
   const hasScrolledRef = useRef(false);
+  const invitesButtonRef = useRef(null);
 
   const getCurrentUserId = () => {
     try {
@@ -508,6 +509,7 @@ const Groups = () => {
               <h3>Groups</h3>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
+                  ref={invitesButtonRef}
                   className="btn btn-sm"
                   data-invites-button
                   onClick={(e) => { e.stopPropagation(); setShowInvites(v => !v); }}
@@ -529,51 +531,122 @@ const Groups = () => {
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>+ New</button>
               </div>
-              {showInvites && (
-                <div
-                  data-invites-popover
-                  style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: '100%',
-                    marginTop: 8,
-                    width: typeof window !== 'undefined' ? Math.min(320, window.innerWidth - 40) : 320,
-                    maxHeight: typeof window !== 'undefined' ? Math.min(260, window.innerHeight - 200) : 260,
-                    background: '#ffffff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 8,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-                    zIndex: 1000,
-                    overflow: 'hidden',
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div style={{ padding: 10, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>
-                    Pending Invitations
-                  </div>
-                  <div style={{ maxHeight: 210, overflowY: 'auto' }}>
-                    {invitations.length === 0 && (
-                      <div style={{ padding: 12, fontSize: 12, color: '#6b7280' }}>No pending invites</div>
-                    )}
-                    {invitations.map(inv => (
-                      <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid #f3f4f6' }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {inv.group_name || 'Group'}
-                          </div>
-                          <div style={{ color: '#6b7280', fontSize: 11 }}>
-                            {new Date(inv.created_at).toLocaleDateString()} {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </div>
+              {showInvites && (() => {
+                const buttonRect = invitesButtonRef.current?.getBoundingClientRect();
+                const popoverWidth = typeof window !== 'undefined' ? Math.min(320, window.innerWidth - 40) : 320;
+                const popoverHeight = typeof window !== 'undefined' ? Math.min(260, window.innerHeight - 200) : 260;
+                let right = 0;
+                let top = '100%';
+                let marginTop = 8;
+                
+                if (buttonRect && typeof window !== 'undefined') {
+                  // Calculate if popover would go off-screen
+                  const spaceBelow = window.innerHeight - buttonRect.bottom;
+                  const spaceAbove = buttonRect.top;
+                  const spaceRight = window.innerWidth - buttonRect.right;
+                  
+                  // If not enough space below, show above
+                  if (spaceBelow < popoverHeight + 20 && spaceAbove > popoverHeight + 20) {
+                    top = 'auto';
+                    marginTop = 0;
+                    const marginBottom = 8;
+                    return (
+                      <div
+                        data-invites-popover
+                        style={{
+                          position: 'absolute',
+                          right: Math.max(0, spaceRight - popoverWidth),
+                          bottom: '100%',
+                          marginBottom: marginBottom,
+                          width: popoverWidth,
+                          maxHeight: popoverHeight,
+                          background: '#ffffff',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: 8,
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+                          zIndex: 1000,
+                          overflow: 'hidden',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div style={{ padding: 10, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>
+                          Pending Invitations
                         </div>
-                        <div style={{ display: 'flex', gap: 6, marginLeft: 8, flexShrink: 0 }}>
-                          <button className="btn btn-success btn-sm" onClick={() => handleInvitationResponse(inv.id, 'accepted')} style={{ fontSize: 11, padding: '4px 8px' }}>Accept</button>
-                          <button className="btn btn-danger btn-sm" onClick={() => handleInvitationResponse(inv.id, 'rejected')} style={{ fontSize: 11, padding: '4px 8px' }}>Reject</button>
+                        <div style={{ maxHeight: popoverHeight - 50, overflowY: 'auto' }}>
+                          {invitations.length === 0 && (
+                            <div style={{ padding: 12, fontSize: 12, color: '#6b7280' }}>No pending invites</div>
+                          )}
+                          {invitations.map(inv => (
+                            <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid #f3f4f6' }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {inv.group_name || 'Group'}
+                                </div>
+                                <div style={{ color: '#6b7280', fontSize: 11 }}>
+                                  {new Date(inv.created_at).toLocaleDateString()} {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, marginLeft: 8, flexShrink: 0 }}>
+                                <button className="btn btn-success btn-sm" onClick={() => handleInvitationResponse(inv.id, 'accepted')} style={{ fontSize: 11, padding: '4px 8px' }}>Accept</button>
+                                <button className="btn btn-danger btn-sm" onClick={() => handleInvitationResponse(inv.id, 'rejected')} style={{ fontSize: 11, padding: '4px 8px' }}>Reject</button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ))}
+                    );
+                  }
+                  
+                  // Adjust right position to keep within viewport
+                  right = Math.max(0, spaceRight - popoverWidth);
+                }
+                
+                return (
+                  <div
+                    data-invites-popover
+                    style={{
+                      position: 'absolute',
+                      right: right,
+                      top: top,
+                      marginTop: marginTop,
+                      width: popoverWidth,
+                      maxHeight: popoverHeight,
+                      background: '#ffffff',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 8,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+                      zIndex: 1000,
+                      overflow: 'hidden',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ padding: 10, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>
+                      Pending Invitations
+                    </div>
+                    <div style={{ maxHeight: popoverHeight - 50, overflowY: 'auto' }}>
+                      {invitations.length === 0 && (
+                        <div style={{ padding: 12, fontSize: 12, color: '#6b7280' }}>No pending invites</div>
+                      )}
+                      {invitations.map(inv => (
+                        <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid #f3f4f6' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {inv.group_name || 'Group'}
+                            </div>
+                            <div style={{ color: '#6b7280', fontSize: 11 }}>
+                              {new Date(inv.created_at).toLocaleDateString()} {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, marginLeft: 8, flexShrink: 0 }}>
+                            <button className="btn btn-success btn-sm" onClick={() => handleInvitationResponse(inv.id, 'accepted')} style={{ fontSize: 11, padding: '4px 8px' }}>Accept</button>
+                            <button className="btn btn-danger btn-sm" onClick={() => handleInvitationResponse(inv.id, 'rejected')} style={{ fontSize: 11, padding: '4px 8px' }}>Reject</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Groups List */}
@@ -697,6 +770,7 @@ const Groups = () => {
                       <div
                         key={m.id}
                         className={`message ${isSent ? 'sent' : 'received'}`}
+                        style={{ marginBottom: '8px' }}
                         onContextMenu={(e) => openContextPopover(e, m)}
                         onClick={(e) => {
                           if (!e.target.closest('.message-reactions')) {
