@@ -582,10 +582,15 @@ def resend_verification():
 @admin_required
 def get_pending_users():
     """
-    Get all pending user signups (admin only)
+    Get all pending user signups that have verified email (admin only)
     Returns: { "pending_users": [...] }
     """
-    pending = User.query.filter_by(signup_status='pending').order_by(User.created_at.desc()).all()
+    pending = (
+        User.query
+        .filter_by(signup_status='pending', email_verified=True)
+        .order_by(User.created_at.desc())
+        .all()
+    )
     return jsonify({
         "pending_users": [u.to_dict(include_verification=True) for u in pending]
     }), 200
@@ -621,6 +626,9 @@ def approve_user(user_id):
     
     if user.signup_status != 'pending':
         return jsonify({"error": "User is not pending approval"}), 400
+    # Ensure email is verified before approval
+    if not getattr(user, 'email_verified', False):
+        return jsonify({"error": "User email is not verified"}), 400
     
     # Get admin who is approving
     admin_id = int(get_jwt_identity())
