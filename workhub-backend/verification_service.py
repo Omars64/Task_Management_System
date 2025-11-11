@@ -273,10 +273,10 @@ class VerificationService:
                 mail_server = app.config.get('MAIL_SERVER', 'SMTP server')
                 print(f"✗ Network connectivity error: Cloud Run cannot reach {mail_server}")
                 print(f"  Error: {e}")
-                print(f"  This means VPC egress is not configured correctly for outbound internet access.")
-                print(f"  IMMEDIATE FIX: Run this command:")
-                print(f"  gcloud run services update workhub-backend --region=us-central1 --vpc-egress=all-traffic --project=genai-workhub")
-                print(f"  Or use the script: workhub-backend/fix_vpc_egress_now.sh")
+                print(f"  This usually means a VPC connector is blocking outbound internet access.")
+                print(f"  COMPLETE FIX: Remove VPC connector to enable default outbound access:")
+                print(f"  gcloud run services update workhub-backend --region=us-central1 --clear-vpc-connector --project=genai-workhub")
+                print(f"  Or use the script: workhub-backend/fix_email_network_complete.sh")
             else:
                 print(f"✗ Network error sending verification email to {email}: {e}")
             import traceback
@@ -289,9 +289,10 @@ class VerificationService:
                 mail_server = app.config.get('MAIL_SERVER', 'SMTP server')
                 print(f"✗ Network connectivity error: Cloud Run cannot reach {mail_server}")
                 print(f"  Error: {e}")
-                print(f"  This means VPC egress is not configured correctly for outbound internet access.")
-                print(f"  IMMEDIATE FIX: Run this command:")
-                print(f"  gcloud run services update workhub-backend --region=us-central1 --vpc-egress=all-traffic --project=genai-workhub")
+                print(f"  This usually means a VPC connector is blocking outbound internet access.")
+                print(f"  COMPLETE FIX: Remove VPC connector to enable default outbound access:")
+                print(f"  gcloud run services update workhub-backend --region=us-central1 --clear-vpc-connector --project=genai-workhub")
+                print(f"  Or use the script: workhub-backend/fix_email_network_complete.sh")
             else:
                 print(f"✗ Error sending verification email to {email}: {e}")
             import traceback
