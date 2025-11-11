@@ -263,20 +263,37 @@ class VerificationService:
                 return True
             finally:
                 socket.setdefaulttimeout(original_timeout)
-        except OSError as e:
+        except (OSError, ConnectionError) as e:
             # Network connectivity errors - provide helpful error message
             error_code = getattr(e, 'errno', None)
-            if error_code == 101:  # Network is unreachable
-                print(f"✗ Network connectivity error: Cloud Run cannot reach {app.config.get('MAIL_SERVER', 'SMTP server')}")
-                print(f"  This usually means VPC egress is not configured correctly.")
-                print(f"  Solution: Run: gcloud run services update workhub-backend --region=us-central1 --vpc-egress=all-traffic")
+            error_str = str(e)
+            
+            # Check for network unreachable errors (errno 101 or in error message)
+            if error_code == 101 or 'Network is unreachable' in error_str or '[Errno 101]' in error_str:
+                mail_server = app.config.get('MAIL_SERVER', 'SMTP server')
+                print(f"✗ Network connectivity error: Cloud Run cannot reach {mail_server}")
+                print(f"  Error: {e}")
+                print(f"  This means VPC egress is not configured correctly for outbound internet access.")
+                print(f"  IMMEDIATE FIX: Run this command:")
+                print(f"  gcloud run services update workhub-backend --region=us-central1 --vpc-egress=all-traffic --project=genai-workhub")
+                print(f"  Or use the script: workhub-backend/fix_vpc_egress_now.sh")
             else:
                 print(f"✗ Network error sending verification email to {email}: {e}")
             import traceback
             traceback.print_exc()
             return False
         except Exception as e:
-            print(f"✗ Error sending verification email to {email}: {e}")
+            # Check if the exception message contains network error indicators
+            error_str = str(e)
+            if '[Errno 101]' in error_str or 'Network is unreachable' in error_str:
+                mail_server = app.config.get('MAIL_SERVER', 'SMTP server')
+                print(f"✗ Network connectivity error: Cloud Run cannot reach {mail_server}")
+                print(f"  Error: {e}")
+                print(f"  This means VPC egress is not configured correctly for outbound internet access.")
+                print(f"  IMMEDIATE FIX: Run this command:")
+                print(f"  gcloud run services update workhub-backend --region=us-central1 --vpc-egress=all-traffic --project=genai-workhub")
+            else:
+                print(f"✗ Error sending verification email to {email}: {e}")
             import traceback
             traceback.print_exc()
             return False
