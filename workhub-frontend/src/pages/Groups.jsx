@@ -39,6 +39,7 @@ const Groups = () => {
   const [showReactionPicker, setShowReactionPicker] = useState(null);
   const [contextPopover, setContextPopover] = useState(null);
   const [activeCount, setActiveCount] = useState(0);
+  const [showInvites, setShowInvites] = useState(false);
   const fileInputRef = useRef(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -499,89 +500,74 @@ const Groups = () => {
       <div className="chat-container">
         <div className="chat-sidebar">
           <div className="sidebar-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, position: 'relative' }}>
               <h3>Groups</h3>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {invitations.length > 0 && (
-                  <div style={{ 
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4
-                  }}>
-                    <span style={{ 
-                      position: 'absolute',
-                      top: -4,
-                      right: -4,
+                <button
+                  className="btn btn-sm"
+                  onClick={() => setShowInvites(v => !v)}
+                  style={{ position: 'relative', padding: '6px 10px', fontSize: 12 }}
+                  title="Pending group invites"
+                >
+                  Invites
+                  {invitations.length > 0 && (
+                    <span style={{
+                      marginLeft: 6,
                       background: '#ef4444',
-                      color: 'white',
-                      borderRadius: '50%',
-                      width: 18,
-                      height: 18,
+                      color: '#fff',
+                      borderRadius: 10,
+                      padding: '1px 6px',
                       fontSize: 11,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 'bold'
-                    }}>
-                      {invitations.length}
-                    </span>
-                    <span style={{ fontSize: 12, color: '#666', fontWeight: 500 }}>PENDING</span>
-                  </div>
-                )}
+                      fontWeight: 700
+                    }}>{invitations.length}</span>
+                  )}
+                </button>
                 <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>+ New</button>
               </div>
-            </div>
-            
-            {/* Pending Invitations Container */}
-            {invitations.length > 0 && (
-              <div style={{ 
-                marginBottom: 16, 
-                padding: 12, 
-                background: '#fff3cd', 
-                border: '1px solid #ffc107', 
-                borderRadius: 6 
-              }}>
-                <h4 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 600 }}>Pending Invitations</h4>
-                <div style={{ maxHeight: 150, overflowY: 'auto' }}>
-                  {invitations.map(inv => (
-                    <div key={inv.id} style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center', 
-                      padding: '6px 4px',
-                      marginBottom: 4,
-                      background: 'white',
-                      borderRadius: 4,
-                      border: '1px solid #e5e7eb'
-                    }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: 13 }}>{inv.group_name || 'Group'}</div>
-                        <div style={{ color: '#666', fontSize: 11 }}>
-                          {new Date(inv.created_at).toLocaleDateString()} {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {showInvites && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: '100%',
+                    marginTop: 8,
+                    width: 320,
+                    maxHeight: 260,
+                    background: '#ffffff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 8,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+                    zIndex: 50,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div style={{ padding: 10, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>
+                    Pending Invitations
+                  </div>
+                  <div style={{ maxHeight: 210, overflowY: 'auto' }}>
+                    {invitations.length === 0 && (
+                      <div style={{ padding: 12, fontSize: 12, color: '#6b7280' }}>No pending invites</div>
+                    )}
+                    {invitations.map(inv => (
+                      <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid #f3f4f6' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {inv.group_name || 'Group'}
+                          </div>
+                          <div style={{ color: '#6b7280', fontSize: 11 }}>
+                            {new Date(inv.created_at).toLocaleDateString()} {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginLeft: 8, flexShrink: 0 }}>
+                          <button className="btn btn-success btn-sm" onClick={() => handleInvitationResponse(inv.id, 'accepted')} style={{ fontSize: 11, padding: '4px 8px' }}>Accept</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => handleInvitationResponse(inv.id, 'rejected')} style={{ fontSize: 11, padding: '4px 8px' }}>Reject</button>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button 
-                          className="btn btn-success btn-sm" 
-                          onClick={() => handleInvitationResponse(inv.id, 'accepted')}
-                          style={{ fontSize: 11, padding: '4px 8px' }}
-                        >
-                          Accept
-                        </button>
-                        <button 
-                          className="btn btn-danger btn-sm" 
-                          onClick={() => handleInvitationResponse(inv.id, 'rejected')}
-                          style={{ fontSize: 11, padding: '4px 8px' }}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Groups List */}
             {groups.length === 0 ? (
