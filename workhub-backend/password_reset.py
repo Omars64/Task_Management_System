@@ -28,6 +28,51 @@ class PasswordResetService:
     @staticmethod
     def send_reset_email(user_email, reset_token, mail):
         """Send password reset email with link"""
+        from flask import current_app
+        app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
+        
+        if not mail:
+            print(f"✗ Mail instance not available - cannot send password reset email to {user_email}")
+            return False
+        
+        # Verify mail configuration (re-load if necessary)
+        mail_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
+        mail_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
+        
+        # If not in app.config, try loading from SystemSettings database
+        if not mail_username or not mail_password:
+            try:
+                from models import SystemSettings
+                settings = SystemSettings.query.first()
+                if settings and settings.smtp_username and settings.smtp_password:
+                    mail_username = settings.smtp_username
+                    mail_password = settings.smtp_password
+                    # Update app.config for future use
+                    app.config['MAIL_USERNAME'] = mail_username
+                    app.config['MAIL_PASSWORD'] = mail_password
+                    app.config['SMTP_USERNAME'] = mail_username
+                    app.config['SMTP_PASSWORD'] = mail_password
+                    if settings.smtp_server:
+                        app.config['MAIL_SERVER'] = settings.smtp_server
+                        app.config['SMTP_SERVER'] = settings.smtp_server
+                    if settings.smtp_port:
+                        app.config['MAIL_PORT'] = settings.smtp_port
+                        app.config['SMTP_PORT'] = settings.smtp_port
+                    if settings.smtp_from_email:
+                        app.config['MAIL_DEFAULT_SENDER'] = settings.smtp_from_email
+                        app.config['SMTP_FROM_EMAIL'] = settings.smtp_from_email
+                    # Reinitialize mail with new config
+                    from flask_mail import Mail
+                    new_mail = Mail(app)
+                    app.extensions['mail'] = new_mail
+                    mail = new_mail
+            except Exception as e:
+                print(f"Could not load email config from SystemSettings: {e}")
+        
+        if not mail_username or not mail_password:
+            print(f"✗ Mail credentials not configured - cannot send password reset email to {user_email}")
+            return False
+        
         try:
             user = User.query.filter_by(email=user_email).first()
             if not user:
@@ -35,6 +80,7 @@ class PasswordResetService:
                 return False
             
             reset_link = PasswordResetService.create_reset_link(reset_token)
+            frontend_url = app.config.get('FRONTEND_URL', 'http://localhost:3000')
             
             msg = Message(
                 subject='Reset Your WorkHub Password',
@@ -42,7 +88,7 @@ class PasswordResetService:
                 html=f"""
                 <html>
                     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
                             <h2 style="color: #4a90e2;">Password Reset Request</h2>
                             
                             <p>Hello {user.name},</p>
@@ -69,24 +115,67 @@ class PasswordResetService:
                             <p>If you didn't request a password reset, please ignore this email. 
                             Your password will remain unchanged.</p>
                             
-                            <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
-                            
-                            <p style="color: #999; font-size: 12px;">
-                                This is an automated message from WorkHub Task Management System.
-                                Please do not reply to this email.
+                            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+                            <p style="color: #999; font-size: 12px; text-align: center;">
+                                WorkHub Task Management System<br>
+                                This is an automated email, please do not reply.
                             </p>
                         </div>
                     </body>
                 </html>
+                """,
+                body=f"""
+                Password Reset Request
+                
+                Hello {user.name},
+                
+                We received a request to reset your password for your WorkHub account.
+                
+                Click this link to reset your password:
+                {reset_link}
+                
+                This link will expire in 15 minutes.
+                
+                If you didn't request a password reset, please ignore this email.
+                Your password will remain unchanged.
+                
+                ---
+                WorkHub Task Management System
                 """
             )
             
-            mail.send(msg)
-            print(f"✓ Password reset email sent to {user_email}")
-            return True
+            # Set a timeout for email sending to prevent long delays
+            import socket
+            original_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(10)  # 10 second timeout
             
+            try:
+                mail.send(msg)
+                print(f"✓ Password reset email sent to {user_email}")
+                return True
+            finally:
+                socket.setdefaulttimeout(original_timeout)
+            
+        except (OSError, ConnectionError) as e:
+            error_code = getattr(e, 'errno', None)
+            error_str = str(e)
+            if error_code == 101 or 'Network is unreachable' in error_str or '[Errno 101]' in error_str:
+                mail_server = app.config.get('MAIL_SERVER', 'SMTP server')
+                print(f"✗ Network connectivity error: Cloud Run cannot reach {mail_server}")
+                print(f"  Error: {e}")
+            else:
+                print(f"✗ Network error sending password reset email to {user_email}: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
         except Exception as e:
-            print(f"✗ Error sending password reset email to {user_email}: {e}")
+            error_str = str(e)
+            if '[Errno 101]' in error_str or 'Network is unreachable' in error_str:
+                mail_server = app.config.get('MAIL_SERVER', 'SMTP server')
+                print(f"✗ Network connectivity error: Cloud Run cannot reach {mail_server}")
+                print(f"  Error: {e}")
+            else:
+                print(f"✗ Error sending password reset email to {user_email}: {e}")
             import traceback
             traceback.print_exc()
             return False

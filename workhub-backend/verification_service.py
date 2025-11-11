@@ -486,8 +486,49 @@ class VerificationService:
     @staticmethod
     def send_rejection_email(user, reason, mail):
         """Send email to user when their signup is rejected"""
+        from flask import current_app
+        app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
+        
         if not mail:
             print("⚠ Mail instance not available - cannot send rejection email")
+            return False
+        
+        # Verify mail configuration (re-load if necessary)
+        mail_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
+        mail_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
+        
+        # If not in app.config, try loading from SystemSettings database
+        if not mail_username or not mail_password:
+            try:
+                from models import SystemSettings
+                settings = SystemSettings.query.first()
+                if settings and settings.smtp_username and settings.smtp_password:
+                    mail_username = settings.smtp_username
+                    mail_password = settings.smtp_password
+                    # Update app.config for future use
+                    app.config['MAIL_USERNAME'] = mail_username
+                    app.config['MAIL_PASSWORD'] = mail_password
+                    app.config['SMTP_USERNAME'] = mail_username
+                    app.config['SMTP_PASSWORD'] = mail_password
+                    if settings.smtp_server:
+                        app.config['MAIL_SERVER'] = settings.smtp_server
+                        app.config['SMTP_SERVER'] = settings.smtp_server
+                    if settings.smtp_port:
+                        app.config['MAIL_PORT'] = settings.smtp_port
+                        app.config['SMTP_PORT'] = settings.smtp_port
+                    if settings.smtp_from_email:
+                        app.config['MAIL_DEFAULT_SENDER'] = settings.smtp_from_email
+                        app.config['SMTP_FROM_EMAIL'] = settings.smtp_from_email
+                    # Reinitialize mail with new config
+                    from flask_mail import Mail
+                    new_mail = Mail(app)
+                    app.extensions['mail'] = new_mail
+                    mail = new_mail
+            except Exception as e:
+                print(f"Could not load email config from SystemSettings: {e}")
+        
+        if not mail_username or not mail_password:
+            print(f"✗ Mail credentials not configured - cannot send rejection email to {user.email}")
             return False
         
         try:
@@ -531,11 +572,37 @@ class VerificationService:
                 """
             )
             
-            mail.send(msg)
-            print(f"✓ Rejection email sent successfully to {user.email}")
-            return True
+            # Set a timeout for email sending to prevent long delays
+            import socket
+            original_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(10)  # 10 second timeout
+            
+            try:
+                mail.send(msg)
+                print(f"✓ Rejection email sent successfully to {user.email}")
+                return True
+            finally:
+                socket.setdefaulttimeout(original_timeout)
+        except (OSError, ConnectionError) as e:
+            error_code = getattr(e, 'errno', None)
+            error_str = str(e)
+            if error_code == 101 or 'Network is unreachable' in error_str or '[Errno 101]' in error_str:
+                mail_server = app.config.get('MAIL_SERVER', 'SMTP server')
+                print(f"✗ Network connectivity error: Cloud Run cannot reach {mail_server}")
+                print(f"  Error: {e}")
+            else:
+                print(f"✗ Network error sending rejection email to {user.email}: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
         except Exception as e:
-            print(f"✗ Error sending rejection email to {user.email}: {e}")
+            error_str = str(e)
+            if '[Errno 101]' in error_str or 'Network is unreachable' in error_str:
+                mail_server = app.config.get('MAIL_SERVER', 'SMTP server')
+                print(f"✗ Network connectivity error: Cloud Run cannot reach {mail_server}")
+                print(f"  Error: {e}")
+            else:
+                print(f"✗ Error sending rejection email to {user.email}: {e}")
             import traceback
             traceback.print_exc()
             return False
