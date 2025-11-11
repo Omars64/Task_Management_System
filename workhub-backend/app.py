@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request, g
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, jwt_required
 from flask_mail import Mail
 from datetime import timedelta
 from config import Config
@@ -265,10 +265,16 @@ def create_app():
     
     # Email connectivity test endpoint (for debugging)
     @app.route('/api/health/email', methods=['GET'])
+    @jwt_required()
     def email_health_check():
         """Test email connectivity - checks if SMTP server is reachable"""
-        # Make it accessible without auth for easier testing
-        # Still check credentials are configured
+        from auth import get_current_user
+        from permissions import Permission
+        # Only allow admins
+        current_user = get_current_user()
+        if not current_user or not current_user.has_permission(Permission.SETTINGS_VIEW):
+            return jsonify({"error": "Access denied"}), 403
+
         import socket
         mail_server = app.config.get('MAIL_SERVER', 'smtp.gmail.com')
         mail_port = app.config.get('MAIL_PORT', 587)
