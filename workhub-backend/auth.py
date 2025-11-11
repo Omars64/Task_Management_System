@@ -25,28 +25,36 @@ auth_bp = Blueprint("auth", __name__)
 def admin_required(fn):
     """Decorator that ensures the requester is an authenticated admin."""
     @wraps(fn)
-    @jwt_required()
+    @jwt_required(optional=True)  # Allow OPTIONS to pass, but validate JWT for actual requests
     def wrapper(*args, **kwargs):
         # Allow CORS preflight to pass without auth
-        try:
-            from flask import request, jsonify
-            if request.method == 'OPTIONS':
-                return jsonify({'ok': True}), 200
-        except Exception:
-            pass
-        uid = get_jwt_identity()
-        try:
-            uid_int = int(uid) if uid is not None else None
-        except (TypeError, ValueError):
-            return jsonify({"error": "Invalid token"}), 401
-
-        user = User.query.get(uid_int) if uid_int is not None else None
-        if not user:
-            return jsonify({"error": "User not found"}), 404
+        from flask import request, jsonify
+        if request.method == 'OPTIONS':
+            return jsonify({'ok': True}), 200
         
-        # Check for admin or super_admin role
-        if user.role not in ["admin", "super_admin"]:
-            return jsonify({"error": "Admin access required"}), 403
+        # Now check JWT and admin role for actual requests
+        from flask_jwt_extended import get_jwt_identity
+        try:
+            uid = get_jwt_identity()
+            if uid is None:
+                return jsonify({"error": "Authentication required"}), 401
+                
+            try:
+                uid_int = int(uid) if uid is not None else None
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid token"}), 401
+
+            user = User.query.get(uid_int) if uid_int is not None else None
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+            
+            # Check for admin or super_admin role
+            if user.role not in ["admin", "super_admin"]:
+                return jsonify({"error": "Admin access required"}), 403
+        except Exception as e:
+            # If JWT check fails, return 401
+            return jsonify({"error": "Authentication required"}), 401
+        
         return fn(*args, **kwargs)
     return wrapper
 
@@ -665,81 +673,114 @@ def approve_user(user_id):
 @auth_bp.route("/reject-user/<int:user_id>", methods=["POST", "OPTIONS"])
 @admin_required
 def reject_user(user_id):
-    # Handle CORS preflight explicitly
-    if request.method == 'OPTIONS':
-        return jsonify({'ok': True}), 200
     """
     Reject a pending user signup (admin only)
     JSON: { "reason": "..." } (optional)
-    Returns: { "message": "User rejected" }
+    Returns: { "message": "User rejected", "user": {...}, "email_queued": bool }
     """
-    from flask import current_app
-    from verification_service import verification_service
-    
-    data = request.get_json(silent=True) or {}
-    reason = data.get("reason", "").strip()
-    
-    user = User.query.get(user_id)
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-    
-    if user.signup_status != 'pending':
-        return jsonify({"error": "User is not pending approval"}), 400
-    
-    # Reject user
-    user.signup_status = 'rejected'
-    user.rejection_reason = reason if reason else None
-    from datetime import datetime
-    user.approved_at = datetime.utcnow()
-    user.approved_by = int(get_jwt_identity())
-    
-    db.session.commit()
-    
-    # Send rejection email in background thread to avoid blocking the API response
-    mail = current_app.extensions.get('mail')
-    email_queued = False
-    if mail:
-        import threading
-        app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
-        def send_email_async():
-            try:
-                # Ensure Flask application context is available in this thread
-                with app.app_context():
-                    verification_service.send_rejection_email(user, reason, mail)
-            except Exception as e:
-                print(f"Error sending rejection email in background: {str(e)}")
+    try:
+        from flask import current_app
+        from verification_service import verification_service
+        from flask_jwt_extended import get_jwt_identity
+        from datetime import datetime
+        
+        data = request.get_json(silent=True) or {}
+        reason = data.get("reason", "").strip()
+        
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        if user.signup_status != 'pending':
+            return jsonify({"error": "User is not pending approval"}), 400
+        
+        # Reject user - this is the critical operation
         try:
-            # Start email sending in background thread
-            thread = threading.Thread(target=send_email_async, daemon=True)
-            thread.start()
-            email_queued = True
-        except Exception as thread_err:
-            print(f"Failed to start rejection email thread: {thread_err}")
-
-    # Ensure attributes are loaded after commit to avoid expired-state lazy loads
-    try:
-        db.session.refresh(user)
-    except Exception as refresh_err:
-        print(f"Warning: could not refresh user after reject commit: {refresh_err}")
-
-    # Build a safe response without triggering lazy loads if the session is closed
-    try:
-        user_dict = user.to_dict(include_verification=True)
-    except Exception as to_dict_err:
-        print(f"Warning: to_dict failed after reject commit: {to_dict_err}")
+            user.signup_status = 'rejected'
+            user.rejection_reason = reason if reason else None
+            user.approved_at = datetime.utcnow()
+            try:
+                user.approved_by = int(get_jwt_identity())
+            except Exception:
+                # If we can't get admin ID, still proceed with rejection
+                user.approved_by = None
+            
+            db.session.commit()
+        except Exception as commit_err:
+            db.session.rollback()
+            print(f"Error committing rejection: {commit_err}")
+            return jsonify({"error": "Failed to reject user"}), 500
+        
+        # Build user dict BEFORE attempting email (to avoid lazy load issues)
         user_dict = {
-            'id': getattr(user, 'id', None),
-            'name': getattr(user, 'name', None),
-            'email': getattr(user, 'email', None),
-            'signup_status': getattr(user, 'signup_status', 'rejected'),
-            'rejection_reason': getattr(user, 'rejection_reason', None),
+            'id': user.id,
+            'name': user.name if user.name else None,
+            'email': user.email if user.email else None,
+            'signup_status': 'rejected',
+            'rejection_reason': user.rejection_reason,
         }
+        
+        # Try to get full dict, but don't fail if it doesn't work
+        try:
+            user_dict = user.to_dict(include_verification=True)
+        except Exception:
+            # Use the basic dict we built above
+            pass
+        
+        # Send rejection email in background thread - don't let this block or fail the response
+        email_queued = False
+        try:
+            mail = current_app.extensions.get('mail')
+            if mail:
+                import threading
+                app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
+                def send_email_async():
+                    try:
+                        with app.app_context():
+                            verification_service.send_rejection_email(user, reason, mail)
+                    except Exception as e:
+                        print(f"Error sending rejection email in background: {str(e)}")
+                
+                thread = threading.Thread(target=send_email_async, daemon=True)
+                thread.start()
+                email_queued = True
+        except Exception as email_err:
+            # Email failure should not affect the rejection response
+            print(f"Failed to queue rejection email: {email_err}")
 
-    return jsonify({
-        "message": "User rejected",
-        "user": user_dict,
-        "email_queued": email_queued
-    }), 200
+        # ALWAYS return success if we got here - user is rejected
+        return jsonify({
+            "message": "User rejected successfully",
+            "user": user_dict,
+            "email_queued": email_queued
+        }), 200
+        
+    except Exception as e:
+        # Last resort error handling - but check if user was already rejected
+        try:
+            db.session.rollback()
+            # Check if user is already rejected (maybe commit succeeded but something else failed)
+            user = User.query.get(user_id)
+            if user and user.signup_status == 'rejected':
+                # User was rejected, return success even if there was an error
+                return jsonify({
+                    "message": "User rejected successfully",
+                    "user": {
+                        'id': user.id,
+                        'name': user.name,
+                        'email': user.email,
+                        'signup_status': 'rejected',
+                        'rejection_reason': user.rejection_reason,
+                    },
+                    "email_queued": False
+                }), 200
+        except Exception:
+            pass
+        
+        print(f"Unexpected error in reject_user: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 
 # --------------------- Password Reset Endpoints ---------------------

@@ -94,28 +94,64 @@ const PendingUsers = () => {
     
     // Close modal immediately for better UX
     closeRejectModal();
+    setActionLoading(true);
     
     // Show toast immediately
     addToast(`Rejecting ${userName}...`, { type: 'info', timeout: 2000 });
 
     try {
       const res = await authAPI.rejectUser(userId, reason);
-      const emailQueued = !!res?.data?.email_queued;
-      addToast(`${userName}'s signup has been rejected.${emailQueued ? ' Email notification sent.' : ' Email notification queued/unavailable.'}`, { type: 'success' });
-      // Refresh both lists to reflect movement
-      fetchPendingUsers();
-      fetchRejectedUsers();
-    } catch (error) {
-      // If backend already applied the change, ensure UI reflects it
-      await Promise.allSettled([fetchPendingUsers(), fetchRejectedUsers()]);
-      addToast(error.response?.data?.error || 'Failed to reject user', { type: 'error' });
-      // Reopen modal if error occurred
-      const user = pendingUsers.find(u => u.id === userId);
-      if (user) {
-        setSelectedUser(user);
-        setRejectionReason(reason);
-        setShowRejectModal(true);
+      // Check if response indicates success (even if status is 200)
+      if (res?.data?.message || res?.data?.user) {
+        const emailQueued = !!res?.data?.email_queued;
+        addToast(`${userName}'s signup has been rejected.${emailQueued ? ' Email notification sent.' : ' Email notification queued/unavailable.'}`, { type: 'success' });
+        // Refresh both lists to reflect movement
+        await Promise.allSettled([fetchPendingUsers(), fetchRejectedUsers()]);
+      } else {
+        // Response doesn't look right, but refresh lists anyway
+        await Promise.allSettled([fetchPendingUsers(), fetchRejectedUsers()]);
+        addToast(`${userName}'s signup has been rejected.`, { type: 'success' });
       }
+    } catch (error) {
+      // Network error or other issue - but backend might have processed it
+      // Always refresh lists to check actual state
+      await Promise.allSettled([fetchPendingUsers(), fetchRejectedUsers()]);
+      
+      // Check if user was actually rejected by looking at the refreshed lists
+      setTimeout(async () => {
+        try {
+          const [pendingRes, rejectedRes] = await Promise.allSettled([
+            authAPI.getPendingUsers(),
+            authAPI.getRejectedUsers()
+          ]);
+          
+          const pending = pendingRes.status === 'fulfilled' ? (pendingRes.value?.data?.pending_users || []) : [];
+          const rejected = rejectedRes.status === 'fulfilled' ? (rejectedRes.value?.data?.rejected_users || []) : [];
+          
+          const wasRejected = rejected.some(u => u.id === userId);
+          const stillPending = pending.some(u => u.id === userId);
+          
+          if (wasRejected) {
+            // User was rejected despite the error - show success
+            addToast(`${userName}'s signup has been rejected.`, { type: 'success' });
+          } else if (stillPending) {
+            // User is still pending - show error and reopen modal
+            addToast(error.response?.data?.error || 'Failed to reject user. Please try again.', { type: 'error' });
+            const user = pendingUsers.find(u => u.id === userId);
+            if (user) {
+              setSelectedUser(user);
+              setRejectionReason(reason);
+              setShowRejectModal(true);
+            }
+          } else {
+            // User not in either list - might have been deleted or something else
+            addToast(error.response?.data?.error || 'Unable to verify rejection status. Please refresh the page.', { type: 'warning' });
+          }
+        } catch (checkErr) {
+          // If we can't verify, just show the original error
+          addToast(error.response?.data?.error || 'Failed to reject user. Please refresh and try again.', { type: 'error' });
+        }
+      }, 500);
     } finally {
       setActionLoading(false);
     }
