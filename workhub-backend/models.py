@@ -824,6 +824,7 @@ class ChatGroup(db.Model):
 
     creator = db.relationship('User', foreign_keys=[created_by])
     members = db.relationship('ChatGroupMember', backref='group', lazy=True, cascade='all, delete-orphan')
+    invitations = db.relationship('GroupInvitation', backref='group', lazy=True, cascade='all, delete-orphan')
     messages = db.relationship('GroupMessage', backref='group', lazy=True, cascade='all, delete-orphan', order_by='GroupMessage.created_at')
 
     def to_dict(self):
@@ -907,3 +908,34 @@ class GroupMessageRead(db.Model):
     __table_args__ = (
         db.UniqueConstraint('message_id', 'user_id', name='uq_group_message_user_read'),
     )
+
+
+class GroupInvitation(db.Model):
+    __tablename__ = 'group_invitations'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('chat_groups.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    status = db.Column(db.String(20), default='pending')  # 'pending','accepted','rejected'
+    rejection_reason = db.Column(db.Text, nullable=True)
+    responded_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='group_invitations')
+
+    __table_args__ = (
+        db.UniqueConstraint('group_id', 'user_id', name='uq_group_invite_user'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'group_id': self.group_id,
+            'user_id': self.user_id,
+            'user_name': self.user.name if self.user else None,
+            'user_email': self.user.email if self.user else None,
+            'status': self.status,
+            'rejection_reason': self.rejection_reason,
+            'responded_at': self.responded_at.isoformat() if self.responded_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }

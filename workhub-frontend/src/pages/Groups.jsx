@@ -17,6 +17,7 @@ const Groups = () => {
   const [editName, setEditName] = useState('');
   const [editMembers, setEditMembers] = useState([]); // [{user_id, role, user_name}]
   const [addMemberIds, setAddMemberIds] = useState([]);
+  const [invitations, setInvitations] = useState([]);
   const pollRef = useRef(null);
 
   const getCurrentUserId = () => {
@@ -32,6 +33,7 @@ const Groups = () => {
   useEffect(() => {
     fetchGroups();
     fetchUsers();
+    fetchInvitations();
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -79,6 +81,13 @@ const Groups = () => {
     } catch (_) {}
   };
 
+  const fetchInvitations = async () => {
+    try {
+      const res = await groupsAPI.listInvitations();
+      setInvitations(res.data || []);
+    } catch (_) {}
+  };
+
   const createGroup = async (e) => {
     e.preventDefault();
     if (!newGroupName.trim()) return;
@@ -89,6 +98,7 @@ const Groups = () => {
       setSelectedMembers([]);
       await fetchGroups();
       setSelectedGroup(res.data);
+      await fetchInvitations();
     } catch (err) {
       console.error('Create group failed', err);
     }
@@ -167,11 +177,16 @@ const Groups = () => {
 
   return (
     <div className="chat-page">
+      {/* Top-right New button */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div />
+        <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New</button>
+      </div>
+
       <div className="chat-sidebar">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <h3 style={{ margin: 0 }}>Groups</h3>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New</button>
             {selectedGroup && isGroupAdmin() && (
               <button className="btn" onClick={openEdit}>Edit</button>
             )}
@@ -189,24 +204,62 @@ const Groups = () => {
           ))}
         </div>
 
+        {/* Creation modal */}
         {creating && (
-          <form onSubmit={createGroup} style={{ marginTop: 12 }}>
-            <input className="form-input" placeholder="Group name" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
-            <div style={{ maxHeight: 160, overflowY: 'auto', marginTop: 8, border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
-              {users.map(u => (
-                <label key={u.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 2px' }}>
-                  <input type="checkbox" checked={selectedMembers.includes(u.id)} onChange={(e) => {
-                    setSelectedMembers(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id));
-                  }} />
-                  <span>{u.name} ({u.email})</span>
-                </label>
-              ))}
+          <div className="modal-overlay" onClick={() => setCreating(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
+              <div className="modal-header">
+                <h3>Create Group</h3>
+                <button className="modal-close" onClick={() => setCreating(false)}>×</button>
+              </div>
+              <div className="modal-body">
+                <label className="form-label">Name</label>
+                <input className="form-input" placeholder="Group name" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+
+                <div style={{ marginTop: 12 }}>
+                  <label className="form-label">Select Members to Invite</label>
+                  <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
+                    {users.map(u => (
+                      <label key={u.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 2px' }}>
+                        <input type="checkbox" checked={selectedMembers.includes(u.id)} onChange={(e) => {
+                          setSelectedMembers(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id));
+                        }} />
+                        <span>{u.name} ({u.email})</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <h4 style={{ margin: '0 0 8px' }}>Pending Invitations (For You)</h4>
+                  <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
+                    {invitations.length === 0 ? (
+                      <div style={{ color: '#666', fontSize: 13 }}>No pending invites</div>
+                    ) : invitations.map(inv => (
+                      <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 4px' }}>
+                        <div>
+                          <strong>{inv.group_name || 'Group'}</strong>
+                          <div style={{ color: '#666', fontSize: 12 }}>Invited on {new Date(inv.created_at).toLocaleString()}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button className="btn btn-success btn-sm" onClick={async () => {
+                            try { await groupsAPI.respondInvitation(inv.id, 'accepted'); await fetchGroups(); await fetchInvitations(); } catch {}
+                          }}>Accept</button>
+                          <button className="btn btn-danger btn-sm" onClick={async () => {
+                            try { await groupsAPI.respondInvitation(inv.id, 'rejected'); await fetchInvitations(); } catch {}
+                          }}>Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setCreating(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName.trim()}>Create</button>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button type="submit" className="btn btn-primary">Create</button>
-              <button type="button" className="btn" onClick={() => setCreating(false)}>Cancel</button>
-            </div>
-          </form>
+          </div>
         )}
 
         {editing && selectedGroupDetails && (

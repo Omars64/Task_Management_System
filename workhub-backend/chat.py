@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
 from models import db, User, ChatConversation, ChatMessage, MessageReaction, Notification
-from models import ChatGroup, ChatGroupMember, GroupMessage, GroupMessageRead
+from models import ChatGroup, ChatGroupMember, GroupMessage, GroupMessageRead, GroupInvitation
 from auth import get_current_user
 from notifications import create_notification
 from werkzeug.utils import secure_filename
@@ -1157,11 +1157,29 @@ def create_group():
         db.session.flush()  # get id
         # Ensure creator is a member (owner)
         db.session.add(ChatGroupMember(group_id=group.id, user_id=current_user.id, role='owner'))
-        # Add other members (dedupe and skip creator)
+        # Create invitations for other users (dedupe and skip creator)
+        invited_ids = set()
         for uid in set(member_ids):
-            if uid and int(uid) != current_user.id:
-                db.session.add(ChatGroupMember(group_id=group.id, user_id=int(uid), role='member'))
+            if not uid:
+                continue
+            uid_int = int(uid)
+            if uid_int == current_user.id or uid_int in invited_ids:
+                continue
+            db.session.add(GroupInvitation(group_id=group.id, user_id=uid_int, status='pending'))
+            invited_ids.add(uid_int)
         db.session.commit()
+        # Fire notifications for invited users (best-effort)
+        try:
+            for uid in invited_ids:
+                create_notification(
+                    user_id=uid,
+                    title='Group Invitation',
+                    message=f'{current_user.name} invited you to join group "{name}"',
+                    notif_type='group_invitation',
+                    related_conversation_id=None
+                )
+        except Exception:
+            pass
         return jsonify(group.to_dict()), 201
     except Exception as e:
         db.session.rollback()
@@ -1419,6 +1437,73 @@ def group_mark_read(group_id):
                 continue
         db.session.commit()
         return jsonify({'ok': True}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+# -------- Group Invitations --------
+
+@chat_bp.route('/groups/invitations', methods=['GET'])
+@jwt_required()
+def list_group_invitations():
+    current_user = get_current_user()
+    try:
+        invitations = GroupInvitation.query.filter_by(user_id=current_user.id, status='pending').all()
+        result = [inv.to_dict() for inv in invitations]
+        # attach group name
+        for item in result:
+            try:
+                g = ChatGroup.query.get(item['group_id'])
+                item['group_name'] = g.name if g else None
+            except Exception:
+                item['group_name'] = None
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/invitations/<int:invitation_id>/respond', methods=['POST'])
+@jwt_required()
+def respond_group_invitation(invitation_id):
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    status = (data.get('status') or '').strip().lower()  # 'accepted' or 'rejected'
+    rejection_reason = (data.get('rejection_reason') or '').strip() if status == 'rejected' else None
+    if status not in ('accepted', 'rejected'):
+        return jsonify({'error': 'Invalid status'}), 400
+    try:
+        inv = GroupInvitation.query.get(invitation_id)
+        if not inv:
+            return jsonify({'error': 'Invitation not found'}), 404
+        if inv.user_id != current_user.id:
+            return jsonify({'error': 'Access denied'}), 403
+        if inv.status != 'pending':
+            return jsonify({'error': 'Invitation already responded'}), 400
+
+        inv.status = status
+        inv.rejection_reason = rejection_reason if status == 'rejected' else None
+        inv.responded_at = datetime.utcnow()
+        if status == 'accepted':
+            # Add as member if not already
+            exists = ChatGroupMember.query.filter_by(group_id=inv.group_id, user_id=current_user.id).first()
+            if not exists:
+                db.session.add(ChatGroupMember(group_id=inv.group_id, user_id=current_user.id, role='member'))
+        db.session.commit()
+        # Optionally notify group owner
+        try:
+            group = ChatGroup.query.get(inv.group_id)
+            if group:
+                create_notification(
+                    user_id=group.created_by,
+                    title='Group Invitation Response',
+                    message=f'{current_user.name} {status} your invitation to group "{group.name}"',
+                    notif_type='group_invitation',
+                    related_conversation_id=None
+                )
+        except Exception:
+            pass
+        return jsonify({'message': f'Invitation {status}', 'invitation': inv.to_dict()}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500

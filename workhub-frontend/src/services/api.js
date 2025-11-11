@@ -147,6 +147,9 @@ export const groupsAPI = {
   addMembers: (groupId, memberIds = []) => api.post(`/chat/groups/${groupId}/members`, { member_ids: memberIds }),
   removeMember: (groupId, userId) => api.delete(`/chat/groups/${groupId}/members/${userId}`),
   setMemberRole: (groupId, userId, role) => api.put(`/chat/groups/${groupId}/members/${userId}/role`, { role }),
+  listInvitations: () => api.get('/chat/groups/invitations'),
+  respondInvitation: (invitationId, status, rejectionReason) =>
+    api.post(`/chat/groups/invitations/${invitationId}/respond`, { status, rejection_reason: rejectionReason }),
 };
 
 // Projects & Sprints API
