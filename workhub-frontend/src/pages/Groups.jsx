@@ -40,6 +40,7 @@ const Groups = () => {
   const [contextPopover, setContextPopover] = useState(null);
   const [activeCount, setActiveCount] = useState(0);
   const [showInvites, setShowInvites] = useState(false);
+  const [invitesModalOpen, setInvitesModalOpen] = useState(false);
   const fileInputRef = useRef(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -509,10 +510,9 @@ const Groups = () => {
               <h3>Groups</h3>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
-                  ref={invitesButtonRef}
                   className="btn btn-sm"
                   data-invites-button
-                  onClick={(e) => { e.stopPropagation(); setShowInvites(v => !v); }}
+                  onClick={(e) => { e.stopPropagation(); setInvitesModalOpen(true); }}
                   style={{ position: 'relative', padding: '6px 10px', fontSize: 12 }}
                   title="Pending group invites"
                 >
@@ -531,122 +531,7 @@ const Groups = () => {
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>+ New</button>
               </div>
-              {showInvites && (() => {
-                const buttonRect = invitesButtonRef.current?.getBoundingClientRect();
-                const popoverWidth = typeof window !== 'undefined' ? Math.min(320, window.innerWidth - 40) : 320;
-                const popoverHeight = typeof window !== 'undefined' ? Math.min(260, window.innerHeight - 200) : 260;
-                let right = 0;
-                let top = '100%';
-                let marginTop = 8;
-                
-                if (buttonRect && typeof window !== 'undefined') {
-                  // Calculate if popover would go off-screen
-                  const spaceBelow = window.innerHeight - buttonRect.bottom;
-                  const spaceAbove = buttonRect.top;
-                  const spaceRight = window.innerWidth - buttonRect.right;
-                  
-                  // If not enough space below, show above
-                  if (spaceBelow < popoverHeight + 20 && spaceAbove > popoverHeight + 20) {
-                    top = 'auto';
-                    marginTop = 0;
-                    const marginBottom = 8;
-                    return (
-                      <div
-                        data-invites-popover
-                        style={{
-                          position: 'absolute',
-                          right: Math.max(0, spaceRight - popoverWidth),
-                          bottom: '100%',
-                          marginBottom: marginBottom,
-                          width: popoverWidth,
-                          maxHeight: popoverHeight,
-                          background: '#ffffff',
-                          border: '1px solid #e5e7eb',
-                          borderRadius: 8,
-                          boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-                          zIndex: 1000,
-                          overflow: 'hidden',
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div style={{ padding: 10, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>
-                          Pending Invitations
-                        </div>
-                        <div style={{ maxHeight: popoverHeight - 50, overflowY: 'auto' }}>
-                          {invitations.length === 0 && (
-                            <div style={{ padding: 12, fontSize: 12, color: '#6b7280' }}>No pending invites</div>
-                          )}
-                          {invitations.map(inv => (
-                            <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid #f3f4f6' }}>
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {inv.group_name || 'Group'}
-                                </div>
-                                <div style={{ color: '#6b7280', fontSize: 11 }}>
-                                  {new Date(inv.created_at).toLocaleDateString()} {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </div>
-                              </div>
-                              <div style={{ display: 'flex', gap: 6, marginLeft: 8, flexShrink: 0 }}>
-                                <button className="btn btn-success btn-sm" onClick={() => handleInvitationResponse(inv.id, 'accepted')} style={{ fontSize: 11, padding: '4px 8px' }}>Accept</button>
-                                <button className="btn btn-danger btn-sm" onClick={() => handleInvitationResponse(inv.id, 'rejected')} style={{ fontSize: 11, padding: '4px 8px' }}>Reject</button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  }
-                  
-                  // Adjust right position to keep within viewport
-                  right = Math.max(0, spaceRight - popoverWidth);
-                }
-                
-                return (
-                  <div
-                    data-invites-popover
-                    style={{
-                      position: 'absolute',
-                      right: right,
-                      top: top,
-                      marginTop: marginTop,
-                      width: popoverWidth,
-                      maxHeight: popoverHeight,
-                      background: '#ffffff',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: 8,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-                      zIndex: 1000,
-                      overflow: 'hidden',
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div style={{ padding: 10, borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>
-                      Pending Invitations
-                    </div>
-                    <div style={{ maxHeight: popoverHeight - 50, overflowY: 'auto' }}>
-                      {invitations.length === 0 && (
-                        <div style={{ padding: 12, fontSize: 12, color: '#6b7280' }}>No pending invites</div>
-                      )}
-                      {invitations.map(inv => (
-                        <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid #f3f4f6' }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {inv.group_name || 'Group'}
-                            </div>
-                            <div style={{ color: '#6b7280', fontSize: 11 }}>
-                              {new Date(inv.created_at).toLocaleDateString()} {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', gap: 6, marginLeft: 8, flexShrink: 0 }}>
-                            <button className="btn btn-success btn-sm" onClick={() => handleInvitationResponse(inv.id, 'accepted')} style={{ fontSize: 11, padding: '4px 8px' }}>Accept</button>
-                            <button className="btn btn-danger btn-sm" onClick={() => handleInvitationResponse(inv.id, 'rejected')} style={{ fontSize: 11, padding: '4px 8px' }}>Reject</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
+              {/* Invites popover removed - handled via modal */}
             </div>
 
             {/* Groups List */}
@@ -1072,6 +957,124 @@ const Groups = () => {
             {contextPopover.msg.sender_id === getCurrentUserId() && (
               <button type="button" disabled={!canModifyMessage(contextPopover.msg) || contextPopover.msg.is_deleted} onClick={() => { deleteForEveryone(contextPopover.msg); setContextPopover(null); }}>Delete for everyone</button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Invitations Modal */}
+      {invitesModalOpen && (
+        <div className="modal-overlay" onClick={() => setInvitesModalOpen(false)} style={{ 
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ 
+            background: 'white',
+            borderRadius: 8,
+            padding: 0,
+            maxWidth: 600,
+            width: '92%',
+            maxHeight: '90vh',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+          }}>
+            <div className="modal-header" style={{ 
+              padding: '16px 20px',
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Pending Invitations</h3>
+              <button 
+                className="modal-close" 
+                onClick={() => setInvitesModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: 24,
+                  cursor: 'pointer',
+                  color: '#666',
+                  padding: 0,
+                  width: 24,
+                  height: 24,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: 20, overflowY: 'auto', flex: 1 }}>
+              {invitations.length === 0 ? (
+                <div style={{ color: '#6b7280', fontSize: 14 }}>No pending invitations.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {invitations.map(inv => (
+                    <div key={inv.id} style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      padding: '10px 12px',
+                      background: '#f9fafb',
+                      borderRadius: 6,
+                      border: '1px solid #e5e7eb'
+                    }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {inv.group_name || 'Group'}
+                        </div>
+                        <div style={{ color: '#6b7280', fontSize: 12 }}>
+                          {new Date(inv.created_at).toLocaleDateString()} {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginLeft: 8, flexShrink: 0 }}>
+                        <button 
+                          className="btn btn-success btn-sm" 
+                          onClick={() => handleInvitationResponse(inv.id, 'accepted')}
+                          style={{ fontSize: 12, padding: '6px 10px' }}
+                        >
+                          Accept
+                        </button>
+                        <button 
+                          className="btn btn-danger btn-sm" 
+                          onClick={() => handleInvitationResponse(inv.id, 'rejected')}
+                          style={{ fontSize: 12, padding: '6px 10px' }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer" style={{ 
+              padding: '16px 20px',
+              borderTop: '1px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8
+            }}>
+              <button 
+                type="button"
+                className="btn btn-secondary" 
+                onClick={() => setInvitesModalOpen(false)}
+                style={{ padding: '8px 16px' }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
