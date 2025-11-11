@@ -690,10 +690,29 @@ def reject_user(user_id):
         # Start email sending in background thread
         thread = threading.Thread(target=send_email_async, daemon=True)
         thread.start()
-    
+
+    # Ensure attributes are loaded after commit to avoid expired-state lazy loads
+    try:
+        db.session.refresh(user)
+    except Exception as refresh_err:
+        print(f"Warning: could not refresh user after reject commit: {refresh_err}")
+
+    # Build a safe response without triggering lazy loads if the session is closed
+    try:
+        user_dict = user.to_dict(include_verification=True)
+    except Exception as to_dict_err:
+        print(f"Warning: to_dict failed after reject commit: {to_dict_err}")
+        user_dict = {
+            'id': getattr(user, 'id', None),
+            'name': getattr(user, 'name', None),
+            'email': getattr(user, 'email', None),
+            'signup_status': getattr(user, 'signup_status', 'rejected'),
+            'rejection_reason': getattr(user, 'rejection_reason', None),
+        }
+
     return jsonify({
         "message": "User rejected",
-        "user": user.to_dict(include_verification=True)
+        "user": user_dict
     }), 200
 
 
