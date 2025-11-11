@@ -6,13 +6,28 @@ const Groups = () => {
   const [groups, setGroups] = useState([]);
   const [users, setUsers] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [selectedGroupDetails, setSelectedGroupDetails] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [creating, setCreating] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [typing, setTyping] = useState([]);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editMembers, setEditMembers] = useState([]); // [{user_id, role, user_name}]
+  const [addMemberIds, setAddMemberIds] = useState([]);
   const pollRef = useRef(null);
+
+  const getCurrentUserId = () => {
+    try {
+      const token = localStorage.getItem('token');
+      const payload = JSON.parse(atob((token || '').split('.')[1] || 'e30='));
+      return payload?.sub;
+    } catch (_) {
+      return null;
+    }
+  };
 
   useEffect(() => {
     fetchGroups();
@@ -25,6 +40,16 @@ const Groups = () => {
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (!selectedGroup) return;
+    // also load group details (members/roles)
+    (async () => {
+      try {
+        const res = await groupsAPI.getDetails(selectedGroup.id);
+        const details = res.data || {};
+        setSelectedGroupDetails(details);
+        setEditName(details?.group?.name || '');
+        setEditMembers(Array.isArray(details?.members) ? details.members : []);
+      } catch (_) {}
+    })();
     const load = async () => {
       try {
         const [msgRes, typingRes] = await Promise.all([
@@ -90,12 +115,67 @@ const Groups = () => {
     }
   };
 
+  const isGroupAdmin = () => {
+    const myId = getCurrentUserId();
+    const myMember = (selectedGroupDetails?.members || []).find(m => m.user_id === myId);
+    return myMember && (myMember.role === 'owner' || myMember.role === 'admin');
+  };
+
+  const openEdit = () => {
+    if (!selectedGroupDetails) return;
+    setEditName(selectedGroupDetails?.group?.name || '');
+    setEditMembers(Array.isArray(selectedGroupDetails?.members) ? selectedGroupDetails.members : []);
+    setAddMemberIds([]);
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    try {
+      if (editName.trim() && editName.trim() !== selectedGroupDetails?.group?.name) {
+        await groupsAPI.rename(selectedGroup.id, editName.trim());
+      }
+      if (addMemberIds.length > 0) {
+        await groupsAPI.addMembers(selectedGroup.id, addMemberIds);
+      }
+      // apply role updates sequentially
+      const originalByUser = {};
+      (selectedGroupDetails?.members || []).forEach(m => { originalByUser[m.user_id] = m; });
+      for (const m of editMembers) {
+        const orig = originalByUser[m.user_id];
+        if (orig && orig.role !== m.role && (m.role === 'admin' || m.role === 'member')) {
+          await groupsAPI.setMemberRole(selectedGroup.id, m.user_id, m.role);
+        }
+      }
+      // removals: members missing from editMembers list
+      const keepIds = new Set(editMembers.map(m => m.user_id));
+      for (const m of (selectedGroupDetails?.members || [])) {
+        if (!keepIds.has(m.user_id) && m.role !== 'owner') {
+          try { await groupsAPI.removeMember(selectedGroup.id, m.user_id); } catch (_) {}
+        }
+      }
+      // reload details and list
+      const res = await groupsAPI.getDetails(selectedGroup.id);
+      setSelectedGroupDetails(res.data || null);
+      await fetchGroups();
+      setEditing(false);
+    } catch (err) {
+      console.error('Failed to save group edits', err);
+    }
+  };
+
+  const availableUsersToAdd = users.filter(u => !(editMembers || []).some(m => m.user_id === u.id));
+
   return (
     <div className="chat-page">
       <div className="chat-sidebar">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <h3 style={{ margin: 0 }}>Groups</h3>
-          <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New</button>
+            {selectedGroup && isGroupAdmin() && (
+              <button className="btn" onClick={openEdit}>Edit</button>
+            )}
+          </div>
         </div>
         <div className="user-list">
           {groups.map(g => (
@@ -127,6 +207,76 @@ const Groups = () => {
               <button type="button" className="btn" onClick={() => setCreating(false)}>Cancel</button>
             </div>
           </form>
+        )}
+
+        {editing && selectedGroupDetails && (
+          <div style={{ marginTop: 12, borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
+            <h4 style={{ margin: '0 0 8px' }}>Edit Group</h4>
+            <label className="form-label">Name</label>
+            <input className="form-input" value={editName} onChange={(e) => setEditName(e.target.value)} />
+
+            <div style={{ marginTop: 10 }}>
+              <label className="form-label">Members</label>
+              <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
+                {(editMembers || []).map(m => (
+                  <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '4px 2px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <strong>{m.user_name}</strong>
+                      <span style={{ fontSize: 12, color: '#666' }}>Role: {m.role}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {m.role !== 'owner' && (
+                        <select
+                          className="form-input"
+                          value={m.role}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setEditMembers(prev => prev.map(x => x.user_id === m.user_id ? { ...x, role: value } : x));
+                          }}
+                        >
+                          <option value="member">Member</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      )}
+                      {m.role !== 'owner' && (
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => setEditMembers(prev => prev.filter(x => x.user_id !== m.user_id))}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <label className="form-label">Add Members</label>
+              <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
+                {availableUsersToAdd.map(u => (
+                  <label key={u.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 2px' }}>
+                    <input
+                      type="checkbox"
+                      checked={addMemberIds.includes(u.id)}
+                      onChange={(e) => setAddMemberIds(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id))}
+                    />
+                    <span>{u.name} ({u.email})</span>
+                  </label>
+                ))}
+                {availableUsersToAdd.length === 0 && (
+                  <div style={{ color: '#666', fontSize: 12 }}>No additional users</div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button className="btn btn-primary" onClick={saveEdit}>Save</button>
+              <button className="btn" onClick={() => setEditing(false)}>Cancel</button>
+            </div>
+          </div>
         )}
       </div>
 

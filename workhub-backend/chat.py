@@ -1183,6 +1183,139 @@ def get_group_messages(group_id):
         return jsonify({'error': str(e)}), 500
 
 
+@chat_bp.route('/groups/<int:group_id>', methods=['GET'])
+@jwt_required()
+def get_group_details(group_id):
+    """Return group info including members and their roles."""
+    current_user = get_current_user()
+    try:
+        # Must be a member to view
+        membership = ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first()
+        if not membership:
+            return jsonify({'error': 'Access denied'}), 403
+        group = ChatGroup.query.get(group_id)
+        if not group:
+            return jsonify({'error': 'Group not found'}), 404
+        members = ChatGroupMember.query.filter_by(group_id=group_id).all()
+        return jsonify({
+            'group': group.to_dict(),
+            'members': [m.to_dict() for m in members]
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/<int:group_id>', methods=['PUT'])
+@jwt_required()
+def update_group(group_id):
+    """Rename group - allowed for owner or admin."""
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    new_name = (data.get('name') or '').strip()
+    try:
+        membership = ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first()
+        if not membership:
+            return jsonify({'error': 'Access denied'}), 403
+        if membership.role not in ('owner', 'admin'):
+            return jsonify({'error': 'Only group admins can rename'}), 403
+        if not new_name:
+            return jsonify({'error': 'Name is required'}), 400
+        group = ChatGroup.query.get(group_id)
+        if not group:
+            return jsonify({'error': 'Group not found'}), 404
+        group.name = new_name
+        db.session.commit()
+        return jsonify(group.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/<int:group_id>/members', methods=['POST'])
+@jwt_required()
+def add_group_members(group_id):
+    """Add one or more members to a group - allowed for owner or admin. Everyone can be invited."""
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    member_ids = data.get('member_ids') or []
+    try:
+        membership = ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first()
+        if not membership:
+            return jsonify({'error': 'Access denied'}), 403
+        if membership.role not in ('owner', 'admin'):
+            return jsonify({'error': 'Only group admins can add members'}), 403
+        existing_user_ids = {m.user_id for m in ChatGroupMember.query.filter_by(group_id=group_id).all()}
+        added = 0
+        for uid in set(int(u) for u in member_ids if u):
+            if uid in existing_user_ids:
+                continue
+            db.session.add(ChatGroupMember(group_id=group_id, user_id=uid, role='member'))
+            added += 1
+        db.session.commit()
+        return jsonify({'added': added}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/<int:group_id>/members/<int:user_id>', methods=['DELETE'])
+@jwt_required()
+def remove_group_member(group_id, user_id):
+    """Remove a member from a group - allowed for owner or admin. Cannot remove owner."""
+    current_user = get_current_user()
+    try:
+        actor = ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first()
+        if not actor:
+            return jsonify({'error': 'Access denied'}), 403
+        if actor.role not in ('owner', 'admin'):
+            return jsonify({'error': 'Only group admins can remove members'}), 403
+        target = ChatGroupMember.query.filter_by(group_id=group_id, user_id=user_id).first()
+        if not target:
+            return jsonify({'error': 'Member not found'}), 404
+        if target.role == 'owner':
+            return jsonify({'error': 'Cannot remove group owner'}), 400
+        # Admins cannot remove other admins; only owner may
+        if target.role == 'admin' and actor.role != 'owner':
+            return jsonify({'error': 'Only owner can remove an admin'}), 403
+        db.session.delete(target)
+        db.session.commit()
+        return jsonify({'removed': True}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/<int:group_id>/members/<int:user_id>/role', methods=['PUT'])
+@jwt_required()
+def update_group_member_role(group_id, user_id):
+    """Promote/demote member to admin/member. Owner or admin can set admin/member, only owner can demote admin if not self."""
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    new_role = (data.get('role') or '').strip().lower()
+    if new_role not in ('admin', 'member'):
+        return jsonify({'error': 'role must be admin or member'}), 400
+    try:
+        actor = ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first()
+        if not actor:
+            return jsonify({'error': 'Access denied'}), 403
+        if actor.role not in ('owner', 'admin'):
+            return jsonify({'error': 'Only group admins can change roles'}), 403
+        target = ChatGroupMember.query.filter_by(group_id=group_id, user_id=user_id).first()
+        if not target:
+            return jsonify({'error': 'Member not found'}), 404
+        if target.role == 'owner':
+            return jsonify({'error': 'Cannot change owner role'}), 400
+        # Only owner can demote an admin (except self-demotion allowed)
+        if target.role == 'admin' and new_role == 'member' and actor.role != 'owner' and target.user_id != actor.user_id:
+            return jsonify({'error': 'Only owner can demote other admins'}), 403
+        target.role = new_role
+        db.session.commit()
+        return jsonify(target.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
 def _notify_mentions(text_content, group_id=None, direct_recipient_id=None):
     try:
         if not text_content:

@@ -142,6 +142,11 @@ export const groupsAPI = {
   setTyping: (groupId, typing) => api.post(`/chat/groups/${groupId}/typing`, { typing }),
   getTyping: (groupId) => api.get(`/chat/groups/${groupId}/typing`),
   markRead: (groupId) => api.post(`/chat/groups/${groupId}/read`),
+  getDetails: (groupId) => api.get(`/chat/groups/${groupId}`),
+  rename: (groupId, name) => api.put(`/chat/groups/${groupId}`, { name }),
+  addMembers: (groupId, memberIds = []) => api.post(`/chat/groups/${groupId}/members`, { member_ids: memberIds }),
+  removeMember: (groupId, userId) => api.delete(`/chat/groups/${groupId}/members/${userId}`),
+  setMemberRole: (groupId, userId, role) => api.put(`/chat/groups/${groupId}/members/${userId}/role`, { role }),
 };
 
 // Projects & Sprints API
