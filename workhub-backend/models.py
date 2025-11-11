@@ -810,3 +810,100 @@ class MessageReaction(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
         return result
+
+
+# -------------------- Group Chat Models --------------------
+
+class ChatGroup(db.Model):
+    __tablename__ = 'chat_groups'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    creator = db.relationship('User', foreign_keys=[created_by])
+    members = db.relationship('ChatGroupMember', backref='group', lazy=True, cascade='all, delete-orphan')
+    messages = db.relationship('GroupMessage', backref='group', lazy=True, cascade='all, delete-orphan', order_by='GroupMessage.created_at')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'created_by': self.created_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'member_count': len(self.members) if self.members else 0
+        }
+
+
+class ChatGroupMember(db.Model):
+    __tablename__ = 'chat_group_members'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('chat_groups.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    role = db.Column(db.String(20), default='member')  # 'owner','admin','member'
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='group_memberships')
+
+    __table_args__ = (
+        db.UniqueConstraint('group_id', 'user_id', name='uq_group_user'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'group_id': self.group_id,
+            'user_id': self.user_id,
+            'user_name': self.user.name if self.user else None,
+            'role': self.role,
+            'joined_at': self.joined_at.isoformat() if self.joined_at else None
+        }
+
+
+class GroupMessage(db.Model):
+    __tablename__ = 'group_messages'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('chat_groups.id'), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    content = db.Column(db.UnicodeText, nullable=False)
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('group_messages.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime)
+    is_edited = db.Column(db.Boolean, default=False)
+    is_deleted = db.Column(db.Boolean, default=False)
+
+    sender = db.relationship('User', foreign_keys=[sender_id])
+    reply_to = db.relationship('GroupMessage', remote_side=[id], backref='replies', foreign_keys=[reply_to_id])
+    reads = db.relationship('GroupMessageRead', backref='message', lazy=True, cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'group_id': self.group_id,
+            'sender_id': self.sender_id,
+            'sender_name': self.sender.name if self.sender else None,
+            'content': self.content,
+            'reply_to_id': self.reply_to_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'is_edited': self.is_edited,
+            'is_deleted': self.is_deleted
+        }
+
+
+class GroupMessageRead(db.Model):
+    __tablename__ = 'group_message_reads'
+
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.Integer, db.ForeignKey('group_messages.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    read_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User')
+
+    __table_args__ = (
+        db.UniqueConstraint('message_id', 'user_id', name='uq_group_message_user_read'),
+    )

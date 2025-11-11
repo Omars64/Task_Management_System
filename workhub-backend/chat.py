@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
 from models import db, User, ChatConversation, ChatMessage, MessageReaction
+from models import ChatGroup, ChatGroupMember, GroupMessage, GroupMessageRead
 from auth import get_current_user
 from notifications import create_notification
 from werkzeug.utils import secure_filename
@@ -1119,6 +1120,172 @@ def remove_reaction(message_id, reaction_id):
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({'error': 'Database error occurred.'}), 500
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+# ---------------------- Group Chat Endpoints ----------------------
+
+@chat_bp.route('/groups', methods=['GET'])
+@jwt_required()
+def get_groups():
+    current_user = get_current_user()
+    try:
+        groups = (db.session.query(ChatGroup)
+                  .join(ChatGroupMember, ChatGroup.id == ChatGroupMember.group_id)
+                  .filter(ChatGroupMember.user_id == current_user.id)
+                  .order_by(ChatGroup.created_at.desc())
+                  .all())
+        return jsonify([g.to_dict() for g in groups]), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups', methods=['POST'])
+@jwt_required()
+def create_group():
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    member_ids = data.get('member_ids') or []
+    if not name:
+        return jsonify({'error': 'Group name is required'}), 400
+    try:
+        group = ChatGroup(name=name, created_by=current_user.id)
+        db.session.add(group)
+        db.session.flush()  # get id
+        # Ensure creator is a member (owner)
+        db.session.add(ChatGroupMember(group_id=group.id, user_id=current_user.id, role='owner'))
+        # Add other members (dedupe and skip creator)
+        for uid in set(member_ids):
+            if uid and int(uid) != current_user.id:
+                db.session.add(ChatGroupMember(group_id=group.id, user_id=int(uid), role='member'))
+        db.session.commit()
+        return jsonify(group.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/<int:group_id>/messages', methods=['GET'])
+@jwt_required()
+def get_group_messages(group_id):
+    current_user = get_current_user()
+    try:
+        # Validate membership
+        is_member = ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first()
+        if not is_member:
+            return jsonify({'error': 'Access denied'}), 403
+        msgs = GroupMessage.query.filter_by(group_id=group_id).order_by(GroupMessage.created_at.asc()).all()
+        return jsonify([m.to_dict() for m in msgs]), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _notify_mentions(text_content, group_id=None, direct_recipient_id=None):
+    try:
+        if not text_content:
+            return
+        import re
+        mentions = set(re.findall(r'@([A-Za-z0-9_.+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9.-]+)', str(text_content)))
+        if not mentions:
+            return
+        # Map emails to users
+        users = User.query.filter(User.email.in_(list(mentions))).all()
+        for u in users:
+            title = 'Mentioned in chat'
+            msg = 'You were mentioned in a message'
+            n = Notification(user_id=u.id, title=title, message=msg, type='chat_message', related_conversation_id=None)
+            db.session.add(n)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return
+
+
+@chat_bp.route('/groups/<int:group_id>/messages', methods=['POST'])
+@jwt_required()
+def send_group_message(group_id):
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    content = (data.get('content') or '').strip()
+    reply_to_id = data.get('reply_to_id')
+    if not content:
+        return jsonify({'error': 'Message content is required'}), 400
+    try:
+        is_member = ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first()
+        if not is_member:
+            return jsonify({'error': 'Access denied'}), 403
+        msg = GroupMessage(group_id=group_id, sender_id=current_user.id, content=content, reply_to_id=reply_to_id)
+        db.session.add(msg)
+        db.session.commit()
+        # Mentions notifications (email-format @mentions)
+        _notify_mentions(content, group_id=group_id)
+        return jsonify(msg.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/<int:group_id>/typing', methods=['POST'])
+@jwt_required()
+def group_typing(group_id):
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    typing = bool(data.get('typing'))
+    try:
+        # Validate membership
+        if not ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first():
+            return jsonify({'error': 'Access denied'}), 403
+        key = (f'g{group_id}', current_user.id)
+        now = _now_ts()
+        _typing_state[key] = now + 8 if typing else now - 1
+        _cleanup_states()
+        return jsonify({'ok': True}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/<int:group_id>/typing', methods=['GET'])
+@jwt_required()
+def group_get_typing(group_id):
+    current_user = get_current_user()
+    try:
+        if not ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first():
+            return jsonify({'error': 'Access denied'}), 403
+        now = _now_ts()
+        typers = []
+        for (key_group, uid), expire in list(_typing_state.items()):
+            if key_group == f'g{group_id}' and expire > now and uid != current_user.id:
+                user = User.query.get(uid)
+                if user:
+                    typers.append({'user_id': uid, 'name': user.name})
+        return jsonify({'typing': typers}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/<int:group_id>/read', methods=['POST'])
+@jwt_required()
+def group_mark_read(group_id):
+    current_user = get_current_user()
+    try:
+        if not ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first():
+            return jsonify({'error': 'Access denied'}), 403
+        # Mark all current messages as read for this user (idempotent)
+        msgs = GroupMessage.query.filter_by(group_id=group_id).all()
+        now = datetime.utcnow()
+        for m in msgs:
+            try:
+                db.session.add(GroupMessageRead(message_id=m.id, user_id=current_user.id, read_at=now))
+                db.session.flush()
+            except Exception:
+                db.session.rollback()
+                db.session.begin()
+                continue
+        db.session.commit()
+        return jsonify({'ok': True}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500

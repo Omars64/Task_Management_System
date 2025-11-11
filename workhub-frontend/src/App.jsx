@@ -18,6 +18,7 @@ import SprintBoard from './pages/SprintBoard';
 import Calendar from './pages/Calendar';
 import RemindersAndMeetings from './pages/RemindersAndMeetings';
 import Chat from './pages/Chat';
+import Groups from './pages/Groups';
 import { ToastProvider } from './context/ToastContext';
 import { I18nProvider } from './i18n';
 import ToastContainer from './components/ToastContainer';
@@ -64,6 +65,7 @@ const AppRoutes = () => {
         <Route path="projects" element={<Projects />} />
         <Route path="reminders-meetings" element={<RemindersAndMeetings />} />
         <Route path="chat" element={<Chat />} />
+        <Route path="groups" element={<Groups />} />
         <Route path="sprint-board" element={<SprintBoard />} />
         <Route path="users" element={
           <PrivateRoute adminOnly>

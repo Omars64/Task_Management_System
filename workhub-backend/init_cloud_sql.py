@@ -213,6 +213,66 @@ def _do_init():
                     );
                 END
             """,
+            'chat_groups': """
+                IF OBJECT_ID('dbo.chat_groups', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE dbo.chat_groups (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        name NVARCHAR(150) NOT NULL,
+                        created_by INT NOT NULL,
+                        created_at DATETIME DEFAULT GETUTCDATE(),
+                        FOREIGN KEY (created_by) REFERENCES users(id)
+                    );
+                END
+            """,
+            'chat_group_members': """
+                IF OBJECT_ID('dbo.chat_group_members', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE dbo.chat_group_members (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        group_id INT NOT NULL,
+                        user_id INT NOT NULL,
+                        role NVARCHAR(20) DEFAULT 'member',
+                        joined_at DATETIME DEFAULT GETUTCDATE(),
+                        FOREIGN KEY (group_id) REFERENCES chat_groups(id) ON DELETE CASCADE,
+                        FOREIGN KEY (user_id) REFERENCES users(id),
+                        CONSTRAINT uq_group_user UNIQUE (group_id, user_id)
+                    );
+                END
+            """,
+            'group_messages': """
+                IF OBJECT_ID('dbo.group_messages', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE dbo.group_messages (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        group_id INT NOT NULL,
+                        sender_id INT NOT NULL,
+                        content NVARCHAR(MAX) NOT NULL,
+                        reply_to_id INT NULL,
+                        created_at DATETIME DEFAULT GETUTCDATE(),
+                        updated_at DATETIME NULL,
+                        is_edited BIT DEFAULT 0,
+                        is_deleted BIT DEFAULT 0,
+                        FOREIGN KEY (group_id) REFERENCES chat_groups(id) ON DELETE CASCADE,
+                        FOREIGN KEY (sender_id) REFERENCES users(id),
+                        FOREIGN KEY (reply_to_id) REFERENCES group_messages(id)
+                    );
+                END
+            """,
+            'group_message_reads': """
+                IF OBJECT_ID('dbo.group_message_reads', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE dbo.group_message_reads (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        message_id INT NOT NULL,
+                        user_id INT NOT NULL,
+                        read_at DATETIME DEFAULT GETUTCDATE(),
+                        FOREIGN KEY (message_id) REFERENCES group_messages(id) ON DELETE CASCADE,
+                        FOREIGN KEY (user_id) REFERENCES users(id),
+                        CONSTRAINT uq_group_message_user_read UNIQUE (message_id, user_id)
+                    );
+                END
+            """,
             'message_reactions': """
                 IF OBJECT_ID('dbo.message_reactions', 'U') IS NULL
                 BEGIN

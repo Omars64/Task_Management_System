@@ -133,6 +133,17 @@ export const chatAPI = {
   removeReaction: (messageId, reactionId) => api.delete(`/chat/messages/${messageId}/reactions/${reactionId}`),
 };
 
+// Groups API
+export const groupsAPI = {
+  list: () => api.get('/chat/groups'),
+  create: (name, memberIds = []) => api.post('/chat/groups', { name, member_ids: memberIds }),
+  getMessages: (groupId) => api.get(`/chat/groups/${groupId}/messages`),
+  sendMessage: (groupId, content, replyToId) => api.post(`/chat/groups/${groupId}/messages`, { content, reply_to_id: replyToId }),
+  setTyping: (groupId, typing) => api.post(`/chat/groups/${groupId}/typing`, { typing }),
+  getTyping: (groupId) => api.get(`/chat/groups/${groupId}/typing`),
+  markRead: (groupId) => api.post(`/chat/groups/${groupId}/read`),
+};
+
 // Projects & Sprints API
 export const projectsAPI = {
   getAll: (params) => api.get('/projects/', { params }),

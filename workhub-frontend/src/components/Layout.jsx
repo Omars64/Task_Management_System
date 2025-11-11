@@ -69,6 +69,7 @@ const Layout = () => {
     { path: '/projects', label: 'Projects', icon: FiList, show: true },
     { path: '/reminders-meetings', label: 'Reminders & Meetings', icon: FiClock, show: true },
     { path: '/chat', label: 'Chat', icon: FiMessageCircle, show: true, badge: chatUnreadCount },
+    { path: '/groups', label: 'Groups', icon: FiUsers, show: true },
     { path: '/users', label: 'Users', icon: FiUsers, show: isAdmin() },
     { path: '/notifications', label: 'Notifications', icon: FiBell, show: true, badge: unreadCount },
     { path: '/reports', label: 'Reports', icon: FiBarChart2, show: true },
