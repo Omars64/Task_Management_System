@@ -139,6 +139,11 @@ export const groupsAPI = {
   create: (name, memberIds = []) => api.post('/chat/groups', { name, member_ids: memberIds }),
   getMessages: (groupId) => api.get(`/chat/groups/${groupId}/messages`),
   sendMessage: (groupId, content, replyToId) => api.post(`/chat/groups/${groupId}/messages`, { content, reply_to_id: replyToId }),
+  editMessage: (messageId, content) => api.put(`/chat/groups/messages/${messageId}`, { content }),
+  deleteForEveryone: (messageId) => api.delete(`/chat/groups/messages/${messageId}/delete-for-everyone`),
+  deleteForMe: (messageId) => api.delete(`/chat/groups/messages/${messageId}/delete-for-me`),
+  addReaction: (messageId, emoji) => api.post(`/chat/groups/messages/${messageId}/reactions`, { emoji }),
+  removeReaction: (messageId, reactionId) => api.delete(`/chat/groups/messages/${messageId}/reactions/${reactionId}`),
   setTyping: (groupId, typing) => api.post(`/chat/groups/${groupId}/typing`, { typing }),
   getTyping: (groupId) => api.get(`/chat/groups/${groupId}/typing`),
   markRead: (groupId) => api.post(`/chat/groups/${groupId}/read`),
@@ -150,6 +155,15 @@ export const groupsAPI = {
   listInvitations: () => api.get('/chat/groups/invitations'),
   respondInvitation: (invitationId, status, rejectionReason) =>
     api.post(`/chat/groups/invitations/${invitationId}/respond`, { status, rejection_reason: rejectionReason }),
+  uploadAttachment: (groupId, file, config = {}) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/chat/groups/${groupId}/attachments`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      ...config,
+    });
+  },
+  downloadAttachment: (messageId) => api.get(`/chat/groups/attachments/${messageId}`, { responseType: 'blob' }),
 };
 
 // Projects & Sprints API

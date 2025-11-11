@@ -19,6 +19,9 @@ const Groups = () => {
   const [editMembers, setEditMembers] = useState([]);
   const [addMemberIds, setAddMemberIds] = useState([]);
   const [invitations, setInvitations] = useState([]);
+  const [replyTo, setReplyTo] = useState(null);
+  const fileInputRef = useRef(null);
+  const [onlineCount, setOnlineCount] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const pollRef = useRef(null);
@@ -71,6 +74,13 @@ const Groups = () => {
         setSelectedGroupDetails(details);
         setEditName(details?.group?.name || '');
         setEditMembers(Array.isArray(details?.members) ? details.members : []);
+        // compute online
+        try {
+          const members = Array.isArray(details?.members) ? details.members : [];
+          const presences = await Promise.allSettled(members.map(m => chatAPI.getPresence(m.user_id)));
+          const active = presences.reduce((sum, r) => (r.status === 'fulfilled' && r.value?.data?.online) ? sum + 1 : sum, 0);
+          setOnlineCount(active);
+        } catch (_) {}
       } catch (_) {}
     })();
     const load = async () => {
@@ -134,8 +144,9 @@ const Groups = () => {
     const content = input.trim();
     if (!content || !selectedGroup) return;
     try {
-      await groupsAPI.sendMessage(selectedGroup.id, content, null);
+      await groupsAPI.sendMessage(selectedGroup.id, content, replyTo?.id || null);
       setInput('');
+      setReplyTo(null);
       await groupsAPI.markRead(selectedGroup.id);
       const res = await groupsAPI.getMessages(selectedGroup.id);
       setMessages(res.data || []);
@@ -411,12 +422,16 @@ const Groups = () => {
                   <div className="chat-avatar">{selectedGroup.name?.charAt(0)?.toUpperCase()}</div>
                   <div>
                     <div className="chat-user-name">{selectedGroup.name}</div>
-                    <div className="chat-user-status">{selectedGroupDetails?.members?.length || 0} members</div>
+                    <div className="chat-user-status">{selectedGroupDetails?.members?.length || 0} members • {onlineCount} online</div>
                   </div>
                 </div>
-                {isGroupAdmin() && (
-                  <button className="btn btn-sm" onClick={openEdit} style={{ fontSize: 12 }}>Edit</button>
-                )}
+                {(() => {
+                  const myId = getCurrentUserId();
+                  const me = (selectedGroupDetails?.members || []).find(m => m.user_id === myId);
+                  return me?.role === 'owner' ? (
+                    <button className="btn btn-sm" onClick={openEdit} style={{ fontSize: 12 }}>Edit</button>
+                  ) : null;
+                })()}
               </div>
               <div className="messages-container">
                 <div className="messages-list">
@@ -460,6 +475,41 @@ const Groups = () => {
                               {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
+                          <div className="message-actions" style={{ marginTop: 4, display: 'flex', gap: 6 }}>
+                            <button className="btn btn-small secondary" onClick={() => setReplyTo(m)} style={{ fontSize: 11 }}>Reply</button>
+                            {isSent ? (
+                              <>
+                                <button className="btn btn-small secondary" onClick={async () => {
+                                  const updated = prompt('Edit message', m.content);
+                                  if (updated != null) { await groupsAPI.editMessage(m.id, updated); const res = await groupsAPI.getMessages(selectedGroup.id); setMessages(res.data || []); }
+                                }} style={{ fontSize: 11 }}>Edit</button>
+                                <button className="btn btn-small secondary" onClick={async () => {
+                                  await groupsAPI.deleteForEveryone(m.id);
+                                  const res = await groupsAPI.getMessages(selectedGroup.id); setMessages(res.data || []);
+                                }} style={{ fontSize: 11 }}>Delete for everyone</button>
+                                <button className="btn btn-small secondary" onClick={() => groupsAPI.deleteForMe(m.id)} style={{ fontSize: 11 }}>Delete for me</button>
+                              </>
+                            ) : (
+                              <button className="btn btn-small secondary" onClick={() => groupsAPI.deleteForMe(m.id)} style={{ fontSize: 11 }}>Delete for me</button>
+                            )}
+                            <div style={{ display: 'flex', gap: 4, marginLeft: 6 }}>
+                              {['👍','❤️','😂','😮','🙏'].map(emo => (
+                                <button key={emo} className="btn btn-small secondary" onClick={async () => {
+                                  await groupsAPI.addReaction(m.id, emo);
+                                  const res = await groupsAPI.getMessages(selectedGroup.id); setMessages(res.data || []);
+                                }} style={{ fontSize: 12, padding: '2px 6px' }}>{emo}</button>
+                              ))}
+                            </div>
+                          </div>
+                          {Array.isArray(m.reactions) && m.reactions.length > 0 && (
+                            <div className="message-reactions" style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {m.reactions.map(r => (
+                                <span key={r.id} className="reaction-bubble" style={{ background: '#f3f4f6', borderRadius: 12, padding: '2px 6px', fontSize: 12 }}>
+                                  {r.emoji} {r.user_name && r.user_name.split(' ')[0]}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -471,15 +521,26 @@ const Groups = () => {
                     {typing.map(t => t.name).join(', ')} typing...
                   </div>
                 )}
-                <div className="chat-input">
+                <div className="message-input-form">
+                  <button className="send-button" title="Attach file" type="button" onClick={() => fileInputRef.current?.click()}>📎</button>
+                  <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !selectedGroup) return;
+                    try {
+                      await groupsAPI.uploadAttachment(selectedGroup.id, file);
+                      const res = await groupsAPI.getMessages(selectedGroup.id);
+                      setMessages(res.data || []);
+                    } catch (_) {}
+                  }} />
+                  <button className="send-button" title="Emoji" type="button" onClick={() => setInput(prev => prev + ' 😊')}>😊</button>
                   <input
-                    className="chat-text-input"
-                    placeholder="Type a message"
+                    className="message-input"
+                    placeholder={replyTo ? `Replying to ${replyTo.sender_name}...` : 'Type a message...'}
                     value={input}
                     onChange={onInputChange}
                     onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
                   />
-                  <button className="btn btn-primary" onClick={send}>Send</button>
+                  <button className="send-button" title="Send" type="button" onClick={send}>➤</button>
                 </div>
               </div>
             </>

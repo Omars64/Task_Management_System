@@ -881,8 +881,14 @@ class GroupMessage(db.Model):
     sender = db.relationship('User', foreign_keys=[sender_id])
     reply_to = db.relationship('GroupMessage', remote_side=[id], backref='replies', foreign_keys=[reply_to_id])
     reads = db.relationship('GroupMessageRead', backref='message', lazy=True, cascade='all, delete-orphan')
+    reactions = db.relationship('GroupMessageReaction', backref='message', lazy=True, cascade='all, delete-orphan')
 
     def to_dict(self):
+        # Gather reactions safely
+        try:
+            reactions_list = [r.to_dict() for r in (self.reactions or [])]
+        except Exception:
+            reactions_list = []
         return {
             'id': self.id,
             'group_id': self.group_id,
@@ -893,7 +899,8 @@ class GroupMessage(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'is_edited': self.is_edited,
-            'is_deleted': self.is_deleted
+            'is_deleted': self.is_deleted,
+            'reactions': reactions_list
         }
 
 
@@ -911,6 +918,39 @@ class GroupMessageRead(db.Model):
         db.UniqueConstraint('message_id', 'user_id', name='uq_group_message_user_read'),
     )
 
+
+class GroupMessageReaction(db.Model):
+    __tablename__ = 'group_message_reactions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.Integer, db.ForeignKey('group_messages.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    emoji = db.Column(db.Unicode(32), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='group_message_reactions')
+
+    __table_args__ = (
+        db.UniqueConstraint('message_id', 'user_id', 'emoji', name='uq_group_message_user_emoji'),
+    )
+
+    def to_dict(self):
+        emoji_value = self.emoji or ''
+        try:
+            if isinstance(emoji_value, bytes):
+                emoji_value = emoji_value.decode('utf-8')
+            emoji_value = emoji_value.replace('\0', '').strip()
+            _ = emoji_value.encode('utf-8').decode('utf-8')
+        except Exception:
+            emoji_value = ''
+        return {
+            'id': self.id,
+            'message_id': self.message_id,
+            'user_id': self.user_id,
+            'user_name': self.user.name if self.user else None,
+            'emoji': emoji_value,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
 
 class GroupInvitation(db.Model):
     __tablename__ = 'group_invitations'

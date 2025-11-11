@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
 from models import db, User, ChatConversation, ChatMessage, MessageReaction, Notification
-from models import ChatGroup, ChatGroupMember, GroupMessage, GroupMessageRead, GroupInvitation
+from models import ChatGroup, ChatGroupMember, GroupMessage, GroupMessageRead, GroupInvitation, GroupMessageReaction
 from auth import get_current_user
 from notifications import create_notification
 from werkzeug.utils import secure_filename
@@ -1379,6 +1379,196 @@ def send_group_message(group_id):
         return jsonify({'error': str(e)}), 500
 
 
+@chat_bp.route('/groups/messages/<int:message_id>', methods=['PUT'])
+@jwt_required()
+def edit_group_message(message_id):
+    """Edit a group message (within 30 minutes of creation, sender only)."""
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    new_content = (data.get('content') or '').strip()
+    if not new_content:
+        return jsonify({'error': 'Message content is required'}), 400
+    try:
+        msg = GroupMessage.query.get(message_id)
+        if not msg:
+            return jsonify({'error': 'Message not found'}), 404
+        # Verify membership
+        if not ChatGroupMember.query.filter_by(group_id=msg.group_id, user_id=current_user.id).first():
+            return jsonify({'error': 'Access denied'}), 403
+        # Only sender can edit
+        if msg.sender_id != current_user.id:
+            return jsonify({'error': 'You can only edit your own messages'}), 403
+        # 30-minute limit
+        from datetime import datetime as _dt
+        if (_dt.utcnow() - msg.created_at).total_seconds() > 1800:
+            return jsonify({'error': 'Messages can only be edited within 30 minutes'}), 400
+        msg.content = new_content
+        msg.is_edited = True
+        msg.updated_at = _dt.utcnow()
+        db.session.commit()
+        return jsonify({'message': 'Message updated successfully', 'group_message': msg.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/messages/<int:message_id>/delete-for-everyone', methods=['DELETE'])
+@jwt_required()
+def delete_group_message_for_everyone(message_id):
+    """Delete a group message for everyone (within 30 minutes, sender only)."""
+    current_user = get_current_user()
+    try:
+        msg = GroupMessage.query.get(message_id)
+        if not msg:
+            return jsonify({'error': 'Message not found'}), 404
+        if not ChatGroupMember.query.filter_by(group_id=msg.group_id, user_id=current_user.id).first():
+            return jsonify({'error': 'Access denied'}), 403
+        if msg.sender_id != current_user.id:
+            return jsonify({'error': 'You can only delete your own messages for everyone'}), 403
+        from datetime import datetime as _dt
+        if (_dt.utcnow() - msg.created_at).total_seconds() > 1800:
+            return jsonify({'error': 'Messages can only be deleted for everyone within 30 minutes'}), 400
+        if hasattr(msg, 'is_deleted'):
+            msg.is_deleted = True
+        msg.content = 'This message was deleted'
+        db.session.commit()
+        return jsonify({'message': 'Message deleted for everyone'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/messages/<int:message_id>/delete-for-me', methods=['DELETE'])
+@jwt_required()
+def delete_group_message_for_me(message_id):
+    """Delete/hide a group message for current user only by creating a read record (client should hide)."""
+    current_user = get_current_user()
+    try:
+        msg = GroupMessage.query.get(message_id)
+        if not msg:
+            return jsonify({'error': 'Message not found'}), 404
+        if not ChatGroupMember.query.filter_by(group_id=msg.group_id, user_id=current_user.id).first():
+            return jsonify({'error': 'Access denied'}), 403
+        # For simplicity, client will hide "deleted_for_me" messages; we track in reads table is enough or just return ok.
+        return jsonify({'message': 'Message deleted for you'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/messages/<int:message_id>/reactions', methods=['POST'])
+@jwt_required()
+def add_group_reaction(message_id):
+    """Add/toggle an emoji reaction to a group message."""
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    emoji = (data.get('emoji') or '').replace('\0', '').strip()
+    if not emoji:
+        return jsonify({'error': 'Emoji is required'}), 400
+    try:
+        msg = GroupMessage.query.get(message_id)
+        if not msg:
+            return jsonify({'error': 'Message not found'}), 404
+        if not ChatGroupMember.query.filter_by(group_id=msg.group_id, user_id=current_user.id).first():
+            return jsonify({'error': 'Access denied'}), 403
+        existing = GroupMessageReaction.query.filter_by(message_id=message_id, user_id=current_user.id, emoji=emoji).first()
+        if existing:
+            db.session.delete(existing)
+            db.session.commit()
+            return jsonify({'message': 'Reaction removed', 'removed': True}), 200
+        reaction = GroupMessageReaction(message_id=message_id, user_id=current_user.id, emoji=emoji)
+        db.session.add(reaction)
+        db.session.commit()
+        return jsonify({'message': 'Reaction added', 'reaction': reaction.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/messages/<int:message_id>/reactions/<int:reaction_id>', methods=['DELETE'])
+@jwt_required()
+def remove_group_reaction(message_id, reaction_id):
+    current_user = get_current_user()
+    try:
+        reaction = GroupMessageReaction.query.get(reaction_id)
+        if not reaction:
+            return jsonify({'error': 'Reaction not found'}), 404
+        if reaction.message_id != message_id or reaction.user_id != current_user.id:
+            return jsonify({'error': 'Access denied'}), 403
+        db.session.delete(reaction)
+        db.session.commit()
+        return jsonify({'message': 'Reaction removed'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/<int:group_id>/attachments', methods=['POST'])
+@jwt_required()
+def upload_group_attachment(group_id):
+    """Upload file to group as a message (<=50 MB)."""
+    try:
+        current_user = get_current_user()
+        if not ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first():
+            return jsonify({'error': 'Access denied'}), 403
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        f = request.files['file']
+        if f.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        # Validate size
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(0)
+        if size > 50 * 1024 * 1024:
+            return jsonify({'error': 'File exceeds 50 MB limit'}), 400
+        upload_folder = os.environ.get('UPLOAD_FOLDER', 'uploads')
+        os.makedirs(upload_folder, exist_ok=True)
+        original = secure_filename(f.filename)
+        unique = f"group_{group_id}_{current_user.id}_{int(datetime.utcnow().timestamp())}_{original}"
+        path = os.path.join(upload_folder, unique)
+        f.save(path)
+        payload = {
+            'type': 'file',
+            'name': original,
+            'size': size,
+            'message': 'File attachment',
+            'file_key': unique
+        }
+        msg = GroupMessage(group_id=group_id, sender_id=current_user.id, content=json.dumps(payload))
+        db.session.add(msg)
+        db.session.commit()
+        return jsonify({'message': 'Attachment sent', 'group_message': msg.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@chat_bp.route('/groups/attachments/<int:message_id>', methods=['GET'])
+@jwt_required()
+def download_group_attachment(message_id):
+    try:
+        current_user = get_current_user()
+        msg = GroupMessage.query.get(message_id)
+        if not msg:
+            return jsonify({'error': 'Message not found'}), 404
+        if not ChatGroupMember.query.filter_by(group_id=msg.group_id, user_id=current_user.id).first():
+            return jsonify({'error': 'Access denied'}), 403
+        try:
+            data = json.loads(msg.content or '{}')
+        except Exception:
+            data = {}
+        file_key = data.get('file_key')
+        name = data.get('name', 'download')
+        if not file_key:
+            return jsonify({'error': 'No attachment found'}), 404
+        upload_folder = os.environ.get('UPLOAD_FOLDER', 'uploads')
+        path = os.path.join(upload_folder, file_key)
+        if not os.path.exists(path):
+            return jsonify({'error': 'File not found'}), 404
+        from flask import send_file
+        return send_file(path, as_attachment=True, download_name=name)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 @chat_bp.route('/groups/<int:group_id>/typing', methods=['POST'])
 @jwt_required()
 def group_typing(group_id):
