@@ -678,9 +678,12 @@ def reject_user(user_id):
     mail = current_app.extensions.get('mail')
     if mail:
         import threading
+        app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
         def send_email_async():
             try:
-                verification_service.send_rejection_email(user, reason, mail)
+                # Ensure Flask application context is available in this thread
+                with app.app_context():
+                    verification_service.send_rejection_email(user, reason, mail)
             except Exception as e:
                 print(f"Error sending rejection email in background: {str(e)}")
         
