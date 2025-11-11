@@ -147,7 +147,7 @@ gcloud run deploy $FRONTEND_SERVICE \
     --allow-unauthenticated \
     --memory 512Mi \
     --cpu 1 \
-    --min-instances 1 \
+    --min-instances 2 \
     --max-instances 5 \
     --timeout 60 \
     --port 80 \
