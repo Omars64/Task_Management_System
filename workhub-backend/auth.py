@@ -27,6 +27,13 @@ def admin_required(fn):
     @wraps(fn)
     @jwt_required()
     def wrapper(*args, **kwargs):
+        # Allow CORS preflight to pass without auth
+        try:
+            from flask import request, jsonify
+            if request.method == 'OPTIONS':
+                return jsonify({'ok': True}), 200
+        except Exception:
+            pass
         uid = get_jwt_identity()
         try:
             uid_int = int(uid) if uid is not None else None
