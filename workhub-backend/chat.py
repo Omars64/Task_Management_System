@@ -1195,7 +1195,13 @@ def get_group_messages(group_id):
         is_member = ChatGroupMember.query.filter_by(group_id=group_id, user_id=current_user.id).first()
         if not is_member:
             return jsonify({'error': 'Access denied'}), 403
-        msgs = GroupMessage.query.filter_by(group_id=group_id).order_by(GroupMessage.created_at.asc()).all()
+        # Eager load relationships to prevent lazy loading errors
+        from sqlalchemy.orm import joinedload, selectinload
+        msgs = GroupMessage.query.options(
+            joinedload(GroupMessage.sender),
+            joinedload(GroupMessage.reply_to).joinedload(GroupMessage.sender),
+            selectinload(GroupMessage.reactions).joinedload(GroupMessageReaction.user)
+        ).filter_by(group_id=group_id).order_by(GroupMessage.created_at.asc()).all()
         return jsonify([m.to_dict() for m in msgs]), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

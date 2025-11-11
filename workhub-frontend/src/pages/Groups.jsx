@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { groupsAPI, chatAPI, usersAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { useModal } from '../hooks/useModal';
+import { FiSend, FiSmile, FiPaperclip, FiX, FiCheck } from 'react-icons/fi';
+import ReactionPicker from '../components/ReactionPicker';
+import moment from 'moment';
 import './Chat.css';
 
 const Groups = () => {
+  const { user } = useAuth();
+  const { showSuccess, showError } = useModal();
   const [groups, setGroups] = useState([]);
   const [users, setUsers] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -19,13 +26,27 @@ const Groups = () => {
   const [editMembers, setEditMembers] = useState([]);
   const [addMemberIds, setAddMemberIds] = useState([]);
   const [invitations, setInvitations] = useState([]);
-  const [replyTo, setReplyTo] = useState(null);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [attachmentFiles, setAttachmentFiles] = useState([]);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingContent, setEditingContent] = useState('');
+  const [previewUrls, setPreviewUrls] = useState({});
+  const [uploadProgress, setUploadProgress] = useState({});
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryImages, setGalleryImages] = useState([]);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [showReactionPicker, setShowReactionPicker] = useState(null);
+  const [contextPopover, setContextPopover] = useState(null);
+  const [activeCount, setActiveCount] = useState(0);
   const fileInputRef = useRef(null);
-  const [onlineCount, setOnlineCount] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const pollRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const typingTimerRef = useRef(null);
+  const hasScrolledRef = useRef(false);
 
   const getCurrentUserId = () => {
     try {
@@ -66,6 +87,7 @@ const Groups = () => {
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (!selectedGroup) return;
+    hasScrolledRef.current = false;
     // also load group details (members/roles)
     (async () => {
       try {
@@ -74,12 +96,12 @@ const Groups = () => {
         setSelectedGroupDetails(details);
         setEditName(details?.group?.name || '');
         setEditMembers(Array.isArray(details?.members) ? details.members : []);
-        // compute online
+        // compute active members (online or recently active)
         try {
           const members = Array.isArray(details?.members) ? details.members : [];
           const presences = await Promise.allSettled(members.map(m => chatAPI.getPresence(m.user_id)));
           const active = presences.reduce((sum, r) => (r.status === 'fulfilled' && r.value?.data?.online) ? sum + 1 : sum, 0);
-          setOnlineCount(active);
+          setActiveCount(active);
         } catch (_) {}
       } catch (_) {}
     })();
@@ -91,7 +113,10 @@ const Groups = () => {
         ]);
         setMessages(msgRes.data || []);
         setTyping((typingRes.data && typingRes.data.typing) || []);
-        setTimeout(scrollToBottom, 100);
+        if (!hasScrolledRef.current) {
+          setTimeout(scrollToBottom, 100);
+          hasScrolledRef.current = true;
+        }
       } catch (_) {}
     };
     load();
@@ -140,27 +165,265 @@ const Groups = () => {
     }
   };
 
-  const send = async () => {
-    const content = input.trim();
-    if (!content || !selectedGroup) return;
+  const send = async (e) => {
+    e?.preventDefault();
+    if ((!input.trim() && attachmentFiles.length === 0) || !selectedGroup) return;
     try {
-      await groupsAPI.sendMessage(selectedGroup.id, content, replyTo?.id || null);
+      if (attachmentFiles.length > 0) {
+        for (const f of attachmentFiles) {
+          try {
+            await groupsAPI.uploadAttachment(selectedGroup.id, f, {
+              onUploadProgress: (progressEvent) => {
+                const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                setUploadProgress(prev => ({ ...prev, [f.name]: percent }));
+              }
+            });
+          } catch (err) {
+            showError(`Failed to upload ${f.name}`, 'Upload Error');
+          }
+        }
+      }
+      if (input.trim()) {
+        await groupsAPI.sendMessage(selectedGroup.id, input.trim(), replyingTo?.id || null);
+      }
       setInput('');
-      setReplyTo(null);
+      setAttachmentFiles([]);
+      setReplyingTo(null);
+      setUploadProgress({});
       await groupsAPI.markRead(selectedGroup.id);
       const res = await groupsAPI.getMessages(selectedGroup.id);
       setMessages(res.data || []);
     } catch (err) {
-      console.error('Send failed', err);
+      showError(err.response?.data?.error || 'Failed to send message', 'Error');
     }
   };
 
-  const onInputChange = async (e) => {
-    setInput(e.target.value);
-    if (selectedGroup) {
-      try { await groupsAPI.setTyping(selectedGroup.id, true); } catch (_) {}
+  const notifyTyping = () => {
+    if (!selectedGroup) return;
+    groupsAPI.setTyping(selectedGroup.id, true).catch(() => {});
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      groupsAPI.setTyping(selectedGroup.id, false).catch(() => {});
+    }, 3000);
+  };
+
+  const handleAddEmoji = (emoji) => {
+    setInput((prev) => prev + emoji);
+  };
+
+  const handleAttachmentChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const maxBytes = 50 * 1024 * 1024;
+    const valid = files.filter(f => {
+      if (f.size > maxBytes) {
+        showError(`${f.name} exceeds 50 MB`, 'Attachment Too Large');
+        return false;
+      }
+      return true;
+    });
+    setAttachmentFiles(prev => [...prev, ...valid]);
+    e.target.value = '';
+  };
+
+  const handleRemoveAttachment = (idx) => {
+    setAttachmentFiles(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleDownloadAttachment = async (msg, filename) => {
+    try {
+      const res = await groupsAPI.downloadAttachment(msg.id);
+      const blob = new Blob([res.data]);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || 'download';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      showError('Failed to download attachment', 'Download Error');
     }
   };
+
+  const handlePreviewAttachment = async (msg, filename) => {
+    try {
+      const res = await groupsAPI.downloadAttachment(msg.id);
+      const blob = new Blob([res.data]);
+      const url = window.URL.createObjectURL(blob);
+      setPreviewUrls((s) => ({ ...s, [msg.id]: url }));
+    } catch (e) {
+      showError('Failed to preview attachment', 'Preview Error');
+    }
+  };
+
+  const canModifyMessage = (msg) => {
+    if (msg.sender_id !== getCurrentUserId()) return false;
+    const created = moment.utc(msg.created_at);
+    return moment.utc().diff(created, 'minutes') <= 30;
+  };
+
+  const startEditMessage = (msg) => {
+    if (!canModifyMessage(msg)) return;
+    setEditingMessageId(msg.id);
+    setEditingContent(msg.content);
+    setContextPopover(null);
+  };
+
+  const submitEditMessage = async (msg) => {
+    if (!editingContent.trim()) {
+      showError('Message cannot be empty', 'Invalid');
+      return;
+    }
+    try {
+      await groupsAPI.editMessage(msg.id, editingContent);
+      showSuccess('Message updated');
+      const res = await groupsAPI.getMessages(selectedGroup.id);
+      setMessages(res.data || []);
+    } catch (error) {
+      showError(error.response?.data?.error || 'Failed to edit message', 'Edit Error');
+    } finally {
+      setEditingMessageId(null);
+      setEditingContent('');
+    }
+  };
+
+  const deleteForMe = async (msg) => {
+    try {
+      await groupsAPI.deleteForMe(msg.id);
+      setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+      setContextPopover(null);
+      showSuccess('Message deleted for you');
+    } catch (error) {
+      showError(error.response?.data?.error || 'Failed to delete message for you', 'Delete Error');
+    }
+  };
+
+  const deleteForEveryone = async (msg) => {
+    if (!canModifyMessage(msg)) return;
+    try {
+      await groupsAPI.deleteForEveryone(msg.id);
+      showSuccess('Message deleted for everyone');
+      const res = await groupsAPI.getMessages(selectedGroup.id);
+      setMessages(res.data || []);
+      setContextPopover(null);
+    } catch (error) {
+      showError(error.response?.data?.error || 'Failed to delete message for everyone', 'Delete Error');
+      setContextPopover(null);
+    }
+  };
+
+  const handleAddReaction = async (messageId, emoji) => {
+    try {
+      await groupsAPI.addReaction(messageId, emoji);
+      const res = await groupsAPI.getMessages(selectedGroup.id);
+      setMessages(res.data || []);
+    } catch (error) {
+      showError(error.response?.data?.error || 'Failed to add reaction', 'Error');
+    }
+  };
+
+  const handleRemoveReaction = async (messageId, reactionId) => {
+    try {
+      await groupsAPI.removeReaction(messageId, reactionId);
+      const res = await groupsAPI.getMessages(selectedGroup.id);
+      setMessages(res.data || []);
+    } catch (error) {
+      showError(error.response?.data?.error || 'Failed to remove reaction', 'Error');
+    }
+  };
+
+  const normalizeEmoji = (emoji) => {
+    if (!emoji) return '';
+    if (typeof emoji === 'string' && emoji.includes('??')) {
+      try {
+        const encoded = encodeURIComponent(emoji);
+        const decoded = decodeURIComponent(encoded);
+        if (decoded && !decoded.includes('??')) {
+          return decoded.trim();
+        }
+      } catch (e) {}
+      return '';
+    }
+    const cleaned = emoji.replace(/\0/g, '').trim();
+    if (cleaned && cleaned.length > 0) {
+      try {
+        const test = new TextEncoder().encode(cleaned);
+        const decoded = new TextDecoder('utf-8').decode(test);
+        if (decoded && !decoded.includes('?')) {
+          return decoded;
+        }
+      } catch (e) {
+        console.warn('Emoji encoding validation failed:', emoji);
+      }
+      return cleaned;
+    }
+    return '';
+  };
+
+  const openContextPopover = (event, msg) => {
+    event.preventDefault();
+    const popoverWidth = 220;
+    const popoverHeight = 200;
+    const padding = 10;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    let x = event.pageX;
+    let y = event.pageY;
+    const isSentMessage = msg.sender_id === getCurrentUserId();
+    if (isSentMessage) {
+      x = x - popoverWidth - 10;
+    } else {
+      x = x + 10;
+    }
+    if (x + popoverWidth > viewportWidth - padding) {
+      x = viewportWidth - popoverWidth - padding;
+    }
+    if (x < padding) {
+      x = padding;
+    }
+    if (y + popoverHeight > viewportHeight - padding) {
+      y = viewportHeight - popoverHeight - padding;
+    }
+    if (y < padding) {
+      y = padding;
+    }
+    setContextPopover({ msg, x, y });
+  };
+
+  const groupReactions = (reactions) => {
+    const grouped = {};
+    reactions.forEach(r => {
+      if (!r || !r.emoji) return;
+      const normalizedEmoji = normalizeEmoji(r.emoji);
+      if (!normalizedEmoji || normalizedEmoji.includes('??')) {
+        return;
+      }
+      if (!grouped[normalizedEmoji]) {
+        grouped[normalizedEmoji] = [];
+      }
+      grouped[normalizedEmoji].push(r);
+    });
+    return grouped;
+  };
+
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!e.target.closest) return;
+      if (!e.target.closest('.emoji-picker') && !e.target.closest('.emoji-button')) {
+        setShowEmojiPicker(false);
+      }
+      if (!e.target.closest('.message-context-popover')) {
+        setContextPopover(null);
+      }
+      if (!e.target.closest('.reaction-picker-popup') && !e.target.closest('.add-reaction-btn')) {
+        setShowReactionPicker(null);
+      }
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, []);
 
   const isGroupAdmin = () => {
     const myId = getCurrentUserId();
@@ -220,7 +483,6 @@ const Groups = () => {
   };
 
   const availableUsersToAdd = users.filter(u => !(editMembers || []).some(m => m.user_id === u.id));
-  const currentUserId = getCurrentUserId();
 
   // Get sender initials helper
   const getSenderInitials = (senderName) => {
@@ -422,92 +684,168 @@ const Groups = () => {
                   <div className="chat-avatar">{selectedGroup.name?.charAt(0)?.toUpperCase()}</div>
                   <div>
                     <div className="chat-user-name">{selectedGroup.name}</div>
-                    <div className="chat-user-status">{selectedGroupDetails?.members?.length || 0} members • {onlineCount} online</div>
+                    <div className="chat-user-status">{activeCount} active</div>
                   </div>
                 </div>
                 {(() => {
                   const myId = getCurrentUserId();
                   const me = (selectedGroupDetails?.members || []).find(m => m.user_id === myId);
                   return me?.role === 'owner' ? (
-                    <button className="btn btn-sm" onClick={openEdit} style={{ fontSize: 12 }}>Edit</button>
+                    <button className="btn btn-sm" onClick={openEdit} style={{ fontSize: 12, marginLeft: 'auto' }}>Edit</button>
                   ) : null;
                 })()}
               </div>
-              <div className="messages-container">
+              <div className="messages-container" ref={messagesContainerRef}>
                 <div className="messages-list">
                   {messages.map(m => {
-                    const isSent = m.sender_id === currentUserId;
+                    const isSent = m.sender_id === getCurrentUserId();
                     const senderInitials = getSenderInitials(m.sender_name);
                     return (
-                      <div key={m.id} className={`message ${isSent ? 'sent' : 'received'}`}>
+                      <div
+                        key={m.id}
+                        className={`message ${isSent ? 'sent' : 'received'}`}
+                        onContextMenu={(e) => openContextPopover(e, m)}
+                        onClick={(e) => {
+                          if (!e.target.closest('.message-reactions')) {
+                            openContextPopover(e, m);
+                          }
+                        }}
+                      >
                         {!isSent && (
-                          <div className="message-sender-avatar" style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: '50%',
-                            background: '#68939d',
-                            color: 'white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 11,
-                            fontWeight: 600,
-                            marginRight: 8,
-                            flexShrink: 0
-                          }}>
+                          <div className="message-sender-avatar">
                             {senderInitials}
                           </div>
                         )}
                         <div className="message-content">
                           {!isSent && (
-                            <div className="message-sender-name" style={{ 
-                              fontSize: 12, 
-                              fontWeight: 600, 
-                              color: '#68939d',
-                              marginBottom: 2
-                            }}>
-                              {m.sender_name}
+                            <div className="message-sender-name">{m.sender_name}</div>
+                          )}
+                          {m.reply_to && (
+                            <div className="message-reply-preview">
+                              <div className="reply-indicator"></div>
+                              <div className="reply-content">
+                                <div className="reply-sender">{m.reply_to.sender_name}</div>
+                                <div className="reply-text">{m.reply_to.content}</div>
+                              </div>
                             </div>
                           )}
-                          <div className="message-text">{m.content}</div>
+                          {editingMessageId === m.id ? (
+                            <div className="message-editing">
+                              <input
+                                className="message-edit-input"
+                                value={editingContent}
+                                onChange={(e) => setEditingContent(e.target.value)}
+                              />
+                              <div className="message-edit-actions">
+                                <button type="button" className="btn-small" onClick={() => submitEditMessage(m)}>Save</button>
+                                <button type="button" className="btn-small secondary" onClick={() => { setEditingMessageId(null); setEditingContent(''); }}>Cancel</button>
+                              </div>
+                            </div>
+                          ) : (
+                            (() => {
+                              let rendered = null;
+                              if (m.is_deleted) {
+                                return (
+                                  <div className="message-deleted">This message was deleted</div>
+                                );
+                              }
+                              try {
+                                const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
+                                if (data && data.type === 'file') {
+                                  const sizeKb = Math.max(1, Math.round((data.size || 0) / 1024));
+                                  const url = previewUrls[m.id];
+                                  const ext = (data.name || '').split('.').pop().toLowerCase();
+                                  const isImage = ['jpg','jpeg','png','gif','webp'].includes(ext);
+                                  const isVideo = ['mp4','webm','ogg','mov'].includes(ext);
+                                  const isPdf = ext === 'pdf';
+                                  rendered = (
+                                    <div className="message-text">
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        <button type="button" className="linklike" onClick={() => handleDownloadAttachment(m, data.name)}>
+                                          <span style={{ marginRight: 6, display: 'inline-flex', verticalAlign: 'middle' }}><FiPaperclip /></span>
+                                          {data.name || 'Download file'} ({sizeKb} KB)
+                                        </button>
+                                        {(isImage || isVideo || isPdf) && (
+                                          <>
+                                            {!url && (
+                                              <button type="button" className="btn-small secondary" onClick={() => handlePreviewAttachment(m, data.name)}>Preview</button>
+                                            )}
+                                            {url && isImage && (
+                                              <img src={url} alt={data.name} style={{ maxWidth: 260, borderRadius: 8, cursor: 'zoom-in' }} onClick={() => {
+                                                const imgs = messages.flatMap(msg => {
+                                                  try {
+                                                    const d = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
+                                                    const e = (d?.name || '').split('.').pop().toLowerCase();
+                                                    if (d && d.type === 'file' && ['jpg','jpeg','png','gif','webp'].includes(e)) {
+                                                      const purl = previewUrls[msg.id];
+                                                      if (purl) return [{ id: msg.id, name: d.name, url: purl }];
+                                                    }
+                                                  } catch (err) {}
+                                                  return [];
+                                                });
+                                                setGalleryImages(imgs);
+                                                const idx = imgs.findIndex(i => i.id === m.id);
+                                                setGalleryIndex(Math.max(0, idx));
+                                                setGalleryOpen(true);
+                                              }} />
+                                            )}
+                                            {url && isVideo && (
+                                              <video src={url} style={{ maxWidth: 260, borderRadius: 8 }} controls />
+                                            )}
+                                            {url && isPdf && (
+                                              <iframe src={url} title={data.name} style={{ width: 260, height: 200, border: 'none', borderRadius: 8 }} />
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                              } catch (e) {}
+                              if (!rendered) {
+                                rendered = (
+                                  <div className="message-text">
+                                    {m.content}
+                                    {m.is_edited && <span className="message-edited-indicator"> (edited)</span>}
+                                  </div>
+                                );
+                              }
+                              return rendered;
+                            })()
+                          )}
                           <div className="message-footer">
-                            <span className="message-time">
-                              {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                          <div className="message-actions" style={{ marginTop: 4, display: 'flex', gap: 6 }}>
-                            <button className="btn btn-small secondary" onClick={() => setReplyTo(m)} style={{ fontSize: 11 }}>Reply</button>
-                            {isSent ? (
-                              <>
-                                <button className="btn btn-small secondary" onClick={async () => {
-                                  const updated = prompt('Edit message', m.content);
-                                  if (updated != null) { await groupsAPI.editMessage(m.id, updated); const res = await groupsAPI.getMessages(selectedGroup.id); setMessages(res.data || []); }
-                                }} style={{ fontSize: 11 }}>Edit</button>
-                                <button className="btn btn-small secondary" onClick={async () => {
-                                  await groupsAPI.deleteForEveryone(m.id);
-                                  const res = await groupsAPI.getMessages(selectedGroup.id); setMessages(res.data || []);
-                                }} style={{ fontSize: 11 }}>Delete for everyone</button>
-                                <button className="btn btn-small secondary" onClick={() => groupsAPI.deleteForMe(m.id)} style={{ fontSize: 11 }}>Delete for me</button>
-                              </>
-                            ) : (
-                              <button className="btn btn-small secondary" onClick={() => groupsAPI.deleteForMe(m.id)} style={{ fontSize: 11 }}>Delete for me</button>
-                            )}
-                            <div style={{ display: 'flex', gap: 4, marginLeft: 6 }}>
-                              {['👍','❤️','😂','😮','🙏'].map(emo => (
-                                <button key={emo} className="btn btn-small secondary" onClick={async () => {
-                                  await groupsAPI.addReaction(m.id, emo);
-                                  const res = await groupsAPI.getMessages(selectedGroup.id); setMessages(res.data || []);
-                                }} style={{ fontSize: 12, padding: '2px 6px' }}>{emo}</button>
-                              ))}
+                            <div className="message-time-status">
+                              <span className="message-time">
+                                {new Date(m.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                              </span>
                             </div>
                           </div>
-                          {Array.isArray(m.reactions) && m.reactions.length > 0 && (
-                            <div className="message-reactions" style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                              {m.reactions.map(r => (
-                                <span key={r.id} className="reaction-bubble" style={{ background: '#f3f4f6', borderRadius: 12, padding: '2px 6px', fontSize: 12 }}>
-                                  {r.emoji} {r.user_name && r.user_name.split(' ')[0]}
-                                </span>
-                              ))}
+                          {m.reactions && m.reactions.length > 0 && (
+                            <div className="message-reactions">
+                              {Object.entries(groupReactions(m.reactions)).map(([emoji, reactionList]) => {
+                                const userReacted = reactionList.some(r => r.user_id === getCurrentUserId());
+                                const userReaction = reactionList.find(r => r.user_id === getCurrentUserId());
+                                return (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    className={`reaction-bubble ${userReacted ? 'user-reacted' : ''}`}
+                                    onClick={() => {
+                                      if (userReacted && userReaction) {
+                                        handleRemoveReaction(m.id, userReaction.id);
+                                      } else {
+                                        handleAddReaction(m.id, emoji);
+                                      }
+                                    }}
+                                    title={reactionList.map(r => r.user_name).join(', ')}
+                                  >
+                                    <span className="reaction-emoji" role="img" aria-label="emoji">
+                                      {normalizeEmoji(emoji) || '❓'}
+                                    </span>
+                                    <span className="reaction-count">{reactionList.length}</span>
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -521,27 +859,83 @@ const Groups = () => {
                     {typing.map(t => t.name).join(', ')} typing...
                   </div>
                 )}
-                <div className="message-input-form">
-                  <button className="send-button" title="Attach file" type="button" onClick={() => fileInputRef.current?.click()}>📎</button>
-                  <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file || !selectedGroup) return;
-                    try {
-                      await groupsAPI.uploadAttachment(selectedGroup.id, file);
-                      const res = await groupsAPI.getMessages(selectedGroup.id);
-                      setMessages(res.data || []);
-                    } catch (_) {}
-                  }} />
-                  <button className="send-button" title="Emoji" type="button" onClick={() => setInput(prev => prev + ' 😊')}>😊</button>
-                  <input
+                <form className="message-input-form" onSubmit={send}
+                  onDragOver={(e) => { e.preventDefault(); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+                    const maxBytes = 50 * 1024 * 1024;
+                    const files = Array.from(e.dataTransfer.files).filter(f => {
+                      if (f.size > maxBytes) { showError(`${f.name} exceeds 50 MB`, 'Attachment Too Large'); return false; }
+                      return true;
+                    });
+                    setAttachmentFiles(prev => [...prev, ...files]);
+                  }}
+                >
+                  <div className="input-left-controls">
+                    <button type="button" className="emoji-button" onClick={() => setShowEmojiPicker(v => !v)} title="Emoji">
+                      <FiSmile />
+                    </button>
+                    <label className="attach-button" title="Attach file" style={{ position: 'relative' }}>
+                      <FiPaperclip />
+                      {attachmentFiles.length > 0 && (
+                        <span className="attachment-badge">{attachmentFiles.length}</span>
+                      )}
+                      <input type="file" onChange={handleAttachmentChange} style={{ display: 'none' }} multiple />
+                    </label>
+                  </div>
+                  {replyingTo && (() => {
+                    const replyMsg = messages.find(msg => msg.id === replyingTo.id);
+                    return replyMsg ? (
+                      <div className="reply-preview-bar">
+                        <div className="reply-preview-content">
+                          <div className="reply-preview-sender">Replying to {replyMsg.sender_name}</div>
+                          <div className="reply-preview-text">{replyMsg.content.length > 50 ? replyMsg.content.substring(0, 50) + '...' : replyMsg.content}</div>
+                        </div>
+                        <button type="button" className="reply-preview-close" onClick={() => setReplyingTo(null)}>×</button>
+                      </div>
+                    ) : null;
+                  })()}
+                  <textarea
                     className="message-input"
-                    placeholder={replyTo ? `Replying to ${replyTo.sender_name}...` : 'Type a message...'}
+                    placeholder={replyingTo ? "Type a reply..." : "Type a message..."}
                     value={input}
-                    onChange={onInputChange}
-                    onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+                    onChange={(e) => { setInput(e.target.value); notifyTyping(); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        send(e);
+                      }
+                    }}
+                    rows={1}
                   />
-                  <button className="send-button" title="Send" type="button" onClick={send}>➤</button>
-                </div>
+                  <div className="input-right-controls">
+                    <button type="submit" className="send-button" disabled={!input.trim() && attachmentFiles.length === 0}>
+                      <FiSend />
+                    </button>
+                  </div>
+                  {showEmojiPicker && (
+                    <div className="emoji-picker">
+                      {['😀','😂','😉','😊','😍','😘','🤔','👍','🙏','🎉','🔥','💯','😢','😮','🙌','🤝','🥳','👏'].map(e => (
+                        <button key={e} type="button" className="emoji-item" onClick={() => handleAddEmoji(e)}>{e}</button>
+                      ))}
+                    </div>
+                  )}
+                  {attachmentFiles && attachmentFiles.length > 0 && (
+                    <div className="attachment-list">
+                      {attachmentFiles.map((f, idx) => (
+                        <div key={idx} className="attachment-chip">
+                          <span className="attachment-name">{f.name}</span>
+                          <div className="progress"><span style={{ width: `${uploadProgress[f.name] || 0}%` }} /></div>
+                          <span className="percent">{uploadProgress[f.name] ? `${uploadProgress[f.name]}%` : ''}</span>
+                          <button type="button" className="attachment-remove" onClick={() => handleRemoveAttachment(idx)} title="Remove">
+                            <FiX />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </form>
               </div>
             </>
           ) : (
@@ -551,6 +945,69 @@ const Groups = () => {
           )}
         </div>
       </div>
+
+      {/* Gallery Overlay */}
+      {galleryOpen && (
+        <div className="gallery-overlay" onClick={() => setGalleryOpen(false)}>
+          <button className="gallery-close" onClick={() => setGalleryOpen(false)}>×</button>
+          {galleryImages[galleryIndex] && (
+            <img className="gallery-content" src={galleryImages[galleryIndex].url} alt={galleryImages[galleryIndex].name} />
+          )}
+          <div className="gallery-nav">
+            <span style={{ marginLeft: 16 }} onClick={(e) => { e.stopPropagation(); setGalleryIndex(i => Math.max(0, i - 1)); }}>‹</span>
+            <span style={{ marginRight: 16 }} onClick={(e) => { e.stopPropagation(); setGalleryIndex(i => Math.min(galleryImages.length - 1, i + 1)); }}>›</span>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp-style context popover near the clicked message */}
+      {contextPopover && (
+        <div
+          className="message-context-popover"
+          style={{ top: contextPopover.y, left: contextPopover.x, position: 'fixed' }}
+        >
+          <div className="popover-reactions">
+            {['👍','❤️','😂','😮','😢','🙏'].map(emo => {
+              const hasReaction = contextPopover.msg.reactions?.some(r => {
+                const normalized = normalizeEmoji(r.emoji);
+                return normalized === emo && r.user_id === getCurrentUserId();
+              });
+              return (
+                <button
+                  key={emo}
+                  type="button"
+                  className={`reaction-btn ${hasReaction ? 'active' : ''}`}
+                  onClick={() => {
+                    if (hasReaction) {
+                      const userReaction = contextPopover.msg.reactions.find(r => {
+                        const normalized = normalizeEmoji(r.emoji);
+                        return normalized === emo && r.user_id === getCurrentUserId();
+                      });
+                      if (userReaction) handleRemoveReaction(contextPopover.msg.id, userReaction.id);
+                    } else {
+                      handleAddReaction(contextPopover.msg.id, emo);
+                    }
+                    setContextPopover(null);
+                  }}
+                  title={emo}
+                >
+                  {emo}
+                </button>
+              );
+            })}
+          </div>
+          <div className="popover-actions">
+            <button type="button" onClick={() => { setReplyingTo(contextPopover.msg); setContextPopover(null); }}>Reply</button>
+            {contextPopover.msg.sender_id === getCurrentUserId() && (
+              <button type="button" disabled={!canModifyMessage(contextPopover.msg) || contextPopover.msg.is_deleted} onClick={() => { startEditMessage(contextPopover.msg); setContextPopover(null); }}>Edit</button>
+            )}
+            <button type="button" onClick={() => { deleteForMe(contextPopover.msg); setContextPopover(null); }}>Delete for me</button>
+            {contextPopover.msg.sender_id === getCurrentUserId() && (
+              <button type="button" disabled={!canModifyMessage(contextPopover.msg) || contextPopover.msg.is_deleted} onClick={() => { deleteForEveryone(contextPopover.msg); setContextPopover(null); }}>Delete for everyone</button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Create Group Modal */}
       {creating && (

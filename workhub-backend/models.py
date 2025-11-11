@@ -884,11 +884,45 @@ class GroupMessage(db.Model):
     reactions = db.relationship('GroupMessageReaction', backref='message', lazy=True, cascade='all, delete-orphan')
 
     def to_dict(self):
-        # Gather reactions safely
+        # Get reply info if this message is a reply
+        reply_info = None
+        if getattr(self, 'reply_to_id', None) and self.reply_to:
+            try:
+                # Try to parse reply content (might be JSON for files)
+                import json
+                reply_content = self.reply_to.content
+                try:
+                    reply_data = json.loads(reply_content) if isinstance(reply_content, str) else reply_content
+                    if isinstance(reply_data, dict) and reply_data.get('type') == 'file':
+                        reply_content = f"📎 {reply_data.get('name', 'File')}"
+                    else:
+                        reply_content = reply_content[:30] + ('...' if len(reply_content) > 30 else '')
+                except:
+                    reply_content = reply_content[:30] + ('...' if len(reply_content) > 30 else '')
+                
+                reply_info = {
+                    'id': self.reply_to.id,
+                    'content': reply_content,
+                    'sender_name': getattr(self.reply_to.sender, 'name', None) if self.reply_to.sender else None
+                }
+            except:
+                pass
+        
+        # Gather reactions safely - filter out corrupted/invalid emojis
+        reactions_list = []
         try:
-            reactions_list = [r.to_dict() for r in (self.reactions or [])]
+            if hasattr(self, 'reactions') and self.reactions:
+                for r in self.reactions:
+                    try:
+                        d = r.to_dict()
+                        emo = d.get('emoji') if isinstance(d, dict) else None
+                        if d and emo and '??' not in emo:
+                            reactions_list.append(d)
+                    except Exception:
+                        continue
         except Exception:
             reactions_list = []
+        
         return {
             'id': self.id,
             'group_id': self.group_id,
@@ -896,6 +930,7 @@ class GroupMessage(db.Model):
             'sender_name': self.sender.name if self.sender else None,
             'content': self.content,
             'reply_to_id': self.reply_to_id,
+            'reply_to': reply_info,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'is_edited': self.is_edited,
