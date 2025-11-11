@@ -263,6 +263,18 @@ class VerificationService:
                 return True
             finally:
                 socket.setdefaulttimeout(original_timeout)
+        except OSError as e:
+            # Network connectivity errors - provide helpful error message
+            error_code = getattr(e, 'errno', None)
+            if error_code == 101:  # Network is unreachable
+                print(f"✗ Network connectivity error: Cloud Run cannot reach {app.config.get('MAIL_SERVER', 'SMTP server')}")
+                print(f"  This usually means VPC egress is not configured correctly.")
+                print(f"  Solution: Run: gcloud run services update workhub-backend --region=us-central1 --vpc-egress=all-traffic")
+            else:
+                print(f"✗ Network error sending verification email to {email}: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
         except Exception as e:
             print(f"✗ Error sending verification email to {email}: {e}")
             import traceback
