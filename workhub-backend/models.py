@@ -266,11 +266,12 @@ class Notification(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     title = db.Column(db.String(200), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    type = db.Column(db.String(50))  # 'task_assigned', 'task_updated', 'deadline', 'comment', 'chat_request', 'chat_accepted', 'chat_message'
+    type = db.Column(db.String(50))  # 'task_assigned', 'task_updated', 'deadline', 'comment', 'chat_request', 'chat_accepted', 'chat_message', 'group_invitation', 'group_message'
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     related_task_id = db.Column(db.Integer, db.ForeignKey('tasks.id'))
     related_conversation_id = db.Column(db.Integer, db.ForeignKey('chat_conversations.id'))
+    related_group_id = db.Column(db.Integer, db.ForeignKey('chat_groups.id'))
     
     def to_dict(self):
         return {
@@ -282,7 +283,8 @@ class Notification(db.Model):
             'is_read': self.is_read,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'related_task_id': self.related_task_id,
-            'related_conversation_id': self.related_conversation_id
+            'related_conversation_id': self.related_conversation_id,
+            'related_group_id': self.related_group_id
         }
 
 

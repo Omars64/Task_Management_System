@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { groupsAPI, chatAPI, usersAPI } from '../services/api';
 import './Chat.css';
 
@@ -15,10 +16,13 @@ const Groups = () => {
   const [typing, setTyping] = useState([]);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
-  const [editMembers, setEditMembers] = useState([]); // [{user_id, role, user_name}]
+  const [editMembers, setEditMembers] = useState([]);
   const [addMemberIds, setAddMemberIds] = useState([]);
   const [invitations, setInvitations] = useState([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const pollRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
   const getCurrentUserId = () => {
     try {
@@ -30,6 +34,10 @@ const Groups = () => {
     }
   };
 
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   useEffect(() => {
     fetchGroups();
     fetchUsers();
@@ -38,6 +46,19 @@ const Groups = () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  // Handle deep-linking from notifications
+  useEffect(() => {
+    const groupId = searchParams.get('groupId');
+    if (groupId && groups.length > 0) {
+      const group = groups.find(g => g.id === parseInt(groupId));
+      if (group) {
+        setSelectedGroup(group);
+        // Clean up URL
+        setSearchParams({});
+      }
+    }
+  }, [groups, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -60,12 +81,17 @@ const Groups = () => {
         ]);
         setMessages(msgRes.data || []);
         setTyping((typingRes.data && typingRes.data.typing) || []);
+        setTimeout(scrollToBottom, 100);
       } catch (_) {}
     };
     load();
     pollRef.current = setInterval(load, 6000);
     return () => pollRef.current && clearInterval(pollRef.current);
   }, [selectedGroup?.id]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const fetchGroups = async () => {
     try {
@@ -97,8 +123,8 @@ const Groups = () => {
       setNewGroupName('');
       setSelectedMembers([]);
       await fetchGroups();
-      setSelectedGroup(res.data);
       await fetchInvitations();
+      setSelectedGroup(res.data);
     } catch (err) {
       console.error('Create group failed', err);
     }
@@ -147,7 +173,6 @@ const Groups = () => {
       if (addMemberIds.length > 0) {
         await groupsAPI.addMembers(selectedGroup.id, addMemberIds);
       }
-      // apply role updates sequentially
       const originalByUser = {};
       (selectedGroupDetails?.members || []).forEach(m => { originalByUser[m.user_id] = m; });
       for (const m of editMembers) {
@@ -156,14 +181,12 @@ const Groups = () => {
           await groupsAPI.setMemberRole(selectedGroup.id, m.user_id, m.role);
         }
       }
-      // removals: members missing from editMembers list
       const keepIds = new Set(editMembers.map(m => m.user_id));
       for (const m of (selectedGroupDetails?.members || [])) {
         if (!keepIds.has(m.user_id) && m.role !== 'owner') {
           try { await groupsAPI.removeMember(selectedGroup.id, m.user_id); } catch (_) {}
         }
       }
-      // reload details and list
       const res = await groupsAPI.getDetails(selectedGroup.id);
       setSelectedGroupDetails(res.data || null);
       await fetchGroups();
@@ -173,203 +196,434 @@ const Groups = () => {
     }
   };
 
+  const handleInvitationResponse = async (invId, status) => {
+    try {
+      await groupsAPI.respondInvitation(invId, status);
+      await fetchInvitations();
+      if (status === 'accepted') {
+        await fetchGroups();
+      }
+    } catch (err) {
+      console.error('Failed to respond to invitation', err);
+    }
+  };
+
   const availableUsersToAdd = users.filter(u => !(editMembers || []).some(m => m.user_id === u.id));
+  const currentUserId = getCurrentUserId();
+
+  // Get sender initials helper
+  const getSenderInitials = (senderName) => {
+    if (!senderName) return '?';
+    const parts = senderName.trim().split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return senderName.charAt(0).toUpperCase();
+  };
 
   return (
     <div className="chat-page">
-      {/* Top-right New button */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div />
-        <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New</button>
-      </div>
-
-      <div className="chat-sidebar">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>Groups</h3>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {selectedGroup && isGroupAdmin() && (
-              <button className="btn" onClick={openEdit}>Edit</button>
-            )}
-          </div>
-        </div>
-        <div className="user-list">
-          {groups.map(g => (
-            <div key={g.id} className={`user-item ${selectedGroup?.id === g.id ? 'active' : ''}`} onClick={() => setSelectedGroup(g)}>
-              <div className="user-avatar">{g.name?.charAt(0)?.toUpperCase()}</div>
-              <div className="user-info">
-                <div className="user-name">{g.name}</div>
-                <div className="user-email">{g.member_count || 0} members</div>
+      <div className="chat-container">
+        <div className="chat-sidebar">
+          <div className="sidebar-section">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3>Groups</h3>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {invitations.length > 0 && (
+                  <div style={{ 
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4
+                  }}>
+                    <span style={{ 
+                      position: 'absolute',
+                      top: -4,
+                      right: -4,
+                      background: '#ef4444',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: 18,
+                      height: 18,
+                      fontSize: 11,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 'bold'
+                    }}>
+                      {invitations.length}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#666', fontWeight: 500 }}>PENDING</span>
+                  </div>
+                )}
+                <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}>+ New</button>
               </div>
             </div>
-          ))}
-        </div>
-
-        {/* Creation modal */}
-        {creating && (
-          <div className="modal-overlay" onClick={() => setCreating(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
-              <div className="modal-header">
-                <h3>Create Group</h3>
-                <button className="modal-close" onClick={() => setCreating(false)}>×</button>
-              </div>
-              <div className="modal-body">
-                <label className="form-label">Name</label>
-                <input className="form-input" placeholder="Group name" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
-
-                <div style={{ marginTop: 12 }}>
-                  <label className="form-label">Select Members to Invite</label>
-                  <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
-                    {users.map(u => (
-                      <label key={u.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 2px' }}>
-                        <input type="checkbox" checked={selectedMembers.includes(u.id)} onChange={(e) => {
-                          setSelectedMembers(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id));
-                        }} />
-                        <span>{u.name} ({u.email})</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 16 }}>
-                  <h4 style={{ margin: '0 0 8px' }}>Pending Invitations (For You)</h4>
-                  <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
-                    {invitations.length === 0 ? (
-                      <div style={{ color: '#666', fontSize: 13 }}>No pending invites</div>
-                    ) : invitations.map(inv => (
-                      <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 4px' }}>
-                        <div>
-                          <strong>{inv.group_name || 'Group'}</strong>
-                          <div style={{ color: '#666', fontSize: 12 }}>Invited on {new Date(inv.created_at).toLocaleString()}</div>
+            
+            {/* Pending Invitations Container */}
+            {invitations.length > 0 && (
+              <div style={{ 
+                marginBottom: 16, 
+                padding: 12, 
+                background: '#fff3cd', 
+                border: '1px solid #ffc107', 
+                borderRadius: 6 
+              }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 600 }}>Pending Invitations</h4>
+                <div style={{ maxHeight: 150, overflowY: 'auto' }}>
+                  {invitations.map(inv => (
+                    <div key={inv.id} style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      padding: '6px 4px',
+                      marginBottom: 4,
+                      background: 'white',
+                      borderRadius: 4,
+                      border: '1px solid #e5e7eb'
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: 13 }}>{inv.group_name || 'Group'}</div>
+                        <div style={{ color: '#666', fontSize: 11 }}>
+                          {new Date(inv.created_at).toLocaleDateString()} {new Date(inv.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button className="btn btn-success btn-sm" onClick={async () => {
-                            try { await groupsAPI.respondInvitation(inv.id, 'accepted'); await fetchGroups(); await fetchInvitations(); } catch {}
-                          }}>Accept</button>
-                          <button className="btn btn-danger btn-sm" onClick={async () => {
-                            try { await groupsAPI.respondInvitation(inv.id, 'rejected'); await fetchInvitations(); } catch {}
-                          }}>Reject</button>
+                      </div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button 
+                          className="btn btn-success btn-sm" 
+                          onClick={() => handleInvitationResponse(inv.id, 'accepted')}
+                          style={{ fontSize: 11, padding: '4px 8px' }}
+                        >
+                          Accept
+                        </button>
+                        <button 
+                          className="btn btn-danger btn-sm" 
+                          onClick={() => handleInvitationResponse(inv.id, 'rejected')}
+                          style={{ fontSize: 11, padding: '4px 8px' }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Groups List */}
+            {groups.length === 0 ? (
+              <p className="empty-state-text">No groups yet</p>
+            ) : (
+              <div className="user-list">
+                {groups.map(g => (
+                  <div 
+                    key={g.id} 
+                    className={`conversation-item ${selectedGroup?.id === g.id ? 'active' : ''}`} 
+                    onClick={() => setSelectedGroup(g)}
+                  >
+                    <div className="conversation-avatar">{g.name?.charAt(0)?.toUpperCase()}</div>
+                    <div className="conversation-info">
+                      <div className="conversation-name">{g.name}</div>
+                      <div className="conversation-preview">{g.member_count || 0} members</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Edit Group Section */}
+            {editing && selectedGroupDetails && (
+              <div style={{ marginTop: 16, borderTop: '1px solid var(--border-color)', paddingTop: 16 }}>
+                <h4 style={{ margin: '0 0 8px', fontSize: 14 }}>Edit Group</h4>
+                <label className="form-label" style={{ fontSize: 12 }}>Name</label>
+                <input className="form-input" value={editName} onChange={(e) => setEditName(e.target.value)} style={{ fontSize: 13 }} />
+                <div style={{ marginTop: 10 }}>
+                  <label className="form-label" style={{ fontSize: 12 }}>Members</label>
+                  <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
+                    {(editMembers || []).map(m => (
+                      <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '4px 2px' }}>
+                        <div>
+                          <strong style={{ fontSize: 12 }}>{m.user_name}</strong>
+                          <div style={{ fontSize: 11, color: '#666' }}>Role: {m.role}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {m.role !== 'owner' && (
+                            <select
+                              className="form-input"
+                              value={m.role}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setEditMembers(prev => prev.map(x => x.user_id === m.user_id ? { ...x, role: value } : x));
+                              }}
+                              style={{ fontSize: 11, padding: '2px 4px' }}
+                            >
+                              <option value="member">Member</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          )}
+                          {m.role !== 'owner' && (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => setEditMembers(prev => prev.filter(x => x.user_id !== m.user_id))}
+                              style={{ fontSize: 11, padding: '4px 8px' }}
+                            >
+                              Remove
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setCreating(false)}>Cancel</button>
-                <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName.trim()}>Create</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {editing && selectedGroupDetails && (
-          <div style={{ marginTop: 12, borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
-            <h4 style={{ margin: '0 0 8px' }}>Edit Group</h4>
-            <label className="form-label">Name</label>
-            <input className="form-input" value={editName} onChange={(e) => setEditName(e.target.value)} />
-
-            <div style={{ marginTop: 10 }}>
-              <label className="form-label">Members</label>
-              <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
-                {(editMembers || []).map(m => (
-                  <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '4px 2px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <strong>{m.user_name}</strong>
-                      <span style={{ fontSize: 12, color: '#666' }}>Role: {m.role}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {m.role !== 'owner' && (
-                        <select
-                          className="form-input"
-                          value={m.role}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setEditMembers(prev => prev.map(x => x.user_id === m.user_id ? { ...x, role: value } : x));
-                          }}
-                        >
-                          <option value="member">Member</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      )}
-                      {m.role !== 'owner' && (
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => setEditMembers(prev => prev.filter(x => x.user_id !== m.user_id))}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <label className="form-label">Add Members</label>
-              <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
-                {availableUsersToAdd.map(u => (
-                  <label key={u.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 2px' }}>
-                    <input
-                      type="checkbox"
-                      checked={addMemberIds.includes(u.id)}
-                      onChange={(e) => setAddMemberIds(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id))}
-                    />
-                    <span>{u.name} ({u.email})</span>
-                  </label>
-                ))}
-                {availableUsersToAdd.length === 0 && (
-                  <div style={{ color: '#666', fontSize: 12 }}>No additional users</div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-              <button className="btn btn-primary" onClick={saveEdit}>Save</button>
-              <button className="btn" onClick={() => setEditing(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="chat-main">
-        {selectedGroup ? (
-          <div className="messages-container">
-            <div className="messages-list">
-              {messages.map(m => (
-                <div key={m.id} className={`message ${m.sender_id === (JSON.parse(atob(localStorage.getItem('token')?.split('.')[1] || 'e30='))?.sub) ? 'sent' : 'received'}`}>
-                  <div className="message-content">
-                    <div className="message-text">{m.content}</div>
-                    <div className="message-footer">
-                      <span className="message-time">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
+                <div style={{ marginTop: 10 }}>
+                  <label className="form-label" style={{ fontSize: 12 }}>Add Members</label>
+                  <div style={{ maxHeight: 100, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
+                    {availableUsersToAdd.map(u => (
+                      <label key={u.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 2px' }}>
+                        <input
+                          type="checkbox"
+                          checked={addMemberIds.includes(u.id)}
+                          onChange={(e) => setAddMemberIds(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id))}
+                        />
+                        <span style={{ fontSize: 12 }}>{u.name} ({u.email})</span>
+                      </label>
+                    ))}
+                    {availableUsersToAdd.length === 0 && (
+                      <div style={{ color: '#666', fontSize: 11 }}>No additional users</div>
+                    )}
                   </div>
                 </div>
-              ))}
-            </div>
-            {typing && typing.length > 0 && (
-              <div style={{ padding: '6px 12px', color: '#666' }}>
-                {typing.map(t => t.name).join(', ')} typing...
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button className="btn btn-primary btn-sm" onClick={saveEdit} style={{ fontSize: 12, padding: '6px 12px' }}>Save</button>
+                  <button className="btn btn-sm" onClick={() => setEditing(false)} style={{ fontSize: 12, padding: '6px 12px' }}>Cancel</button>
+                </div>
               </div>
             )}
-            <div className="chat-input">
-              <input
-                className="chat-text-input"
-                placeholder="Type a message"
-                value={input}
-                onChange={onInputChange}
-                onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
-              />
-              <button className="btn btn-primary" onClick={send}>Send</button>
+          </div>
+        </div>
+
+        <div className="chat-main">
+          {selectedGroup ? (
+            <>
+              <div className="chat-header-bar">
+                <div className="chat-user-info">
+                  <div className="chat-avatar">{selectedGroup.name?.charAt(0)?.toUpperCase()}</div>
+                  <div>
+                    <div className="chat-user-name">{selectedGroup.name}</div>
+                    <div className="chat-user-status">{selectedGroupDetails?.members?.length || 0} members</div>
+                  </div>
+                </div>
+                {isGroupAdmin() && (
+                  <button className="btn btn-sm" onClick={openEdit} style={{ fontSize: 12 }}>Edit</button>
+                )}
+              </div>
+              <div className="messages-container">
+                <div className="messages-list">
+                  {messages.map(m => {
+                    const isSent = m.sender_id === currentUserId;
+                    const senderInitials = getSenderInitials(m.sender_name);
+                    return (
+                      <div key={m.id} className={`message ${isSent ? 'sent' : 'received'}`}>
+                        {!isSent && (
+                          <div className="message-sender-avatar" style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: '50%',
+                            background: '#68939d',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            marginRight: 8,
+                            flexShrink: 0
+                          }}>
+                            {senderInitials}
+                          </div>
+                        )}
+                        <div className="message-content">
+                          {!isSent && (
+                            <div className="message-sender-name" style={{ 
+                              fontSize: 12, 
+                              fontWeight: 600, 
+                              color: '#68939d',
+                              marginBottom: 2
+                            }}>
+                              {m.sender_name}
+                            </div>
+                          )}
+                          <div className="message-text">{m.content}</div>
+                          <div className="message-footer">
+                            <span className="message-time">
+                              {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+                {typing && typing.length > 0 && (
+                  <div style={{ padding: '6px 12px', color: '#666', fontSize: 12 }}>
+                    {typing.map(t => t.name).join(', ')} typing...
+                  </div>
+                )}
+                <div className="chat-input">
+                  <input
+                    className="chat-text-input"
+                    placeholder="Type a message"
+                    value={input}
+                    onChange={onInputChange}
+                    onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+                  />
+                  <button className="btn btn-primary" onClick={send}>Send</button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
+              Select a group or create a new one
             </div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666' }}>
-            Select a group or create a new one
-          </div>
-        )}
+          )}
+        </div>
       </div>
+
+      {/* Create Group Modal */}
+      {creating && (
+        <div className="modal-overlay" onClick={() => setCreating(false)} style={{ 
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ 
+            background: 'white',
+            borderRadius: 8,
+            padding: 0,
+            maxWidth: 500,
+            width: '90%',
+            maxHeight: '90vh',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+          }}>
+            <div className="modal-header" style={{ 
+              padding: '16px 20px',
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Create Group</h3>
+              <button 
+                className="modal-close" 
+                onClick={() => setCreating(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: 24,
+                  cursor: 'pointer',
+                  color: '#666',
+                  padding: 0,
+                  width: 24,
+                  height: 24,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={createGroup}>
+              <div className="modal-body" style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                <div className="form-group">
+                  <label className="form-label">Group name</label>
+                  <input 
+                    className="form-input" 
+                    placeholder="Enter group name" 
+                    value={newGroupName} 
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginTop: 16 }}>
+                  <label className="form-label">Select Members to Invite</label>
+                  <div style={{ 
+                    maxHeight: 200, 
+                    overflowY: 'auto', 
+                    border: '1px solid var(--border-color)', 
+                    borderRadius: 6, 
+                    padding: 8,
+                    background: '#f9fafb'
+                  }}>
+                    {users.length === 0 ? (
+                      <div style={{ color: '#666', fontSize: 13, padding: 8 }}>No users available</div>
+                    ) : (
+                      users.map(u => (
+                        <label 
+                          key={u.id} 
+                          style={{ 
+                            display: 'flex', 
+                            gap: 8, 
+                            alignItems: 'center', 
+                            padding: '6px 4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <input 
+                            type="checkbox" 
+                            checked={selectedMembers.includes(u.id)} 
+                            onChange={(e) => {
+                              setSelectedMembers(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id));
+                            }} 
+                          />
+                          <span style={{ fontSize: 13 }}>{u.name} ({u.email})</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer" style={{ 
+                padding: '16px 20px',
+                borderTop: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: 8
+              }}>
+                <button 
+                  type="button"
+                  className="btn btn-secondary" 
+                  onClick={() => setCreating(false)}
+                  style={{ padding: '8px 16px' }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="btn btn-primary" 
+                  disabled={!newGroupName.trim()}
+                  style={{ padding: '8px 16px' }}
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

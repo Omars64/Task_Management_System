@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, Notification, NotificationPreference, User, Task, Comment, ChatConversation, Project, ProjectMember
+from models import db, Notification, NotificationPreference, User, Task, Comment, ChatConversation, Project, ProjectMember, ChatGroup, ChatGroupMember
 from email_service import email_service
 from permissions import Permission
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 notifications_bp = Blueprint('notifications', __name__)
 
 
-def create_notification(user_id, title, message, notif_type, related_task_id=None, related_conversation_id=None, send_email=True):
+def create_notification(user_id, title, message, notif_type, related_task_id=None, related_conversation_id=None, related_group_id=None, send_email=True):
     """
     Helper function to create a notification (simplified version without email)
     
@@ -35,7 +35,8 @@ def create_notification(user_id, title, message, notif_type, related_task_id=Non
             message=message,
             type=notif_type,
             related_task_id=related_task_id,
-            related_conversation_id=related_conversation_id
+            related_conversation_id=related_conversation_id,
+            related_group_id=related_group_id
         )
         db.session.add(notification)
         db.session.commit()
@@ -46,7 +47,7 @@ def create_notification(user_id, title, message, notif_type, related_task_id=Non
         return None
 
 
-def create_notification_with_email(user_id, title, message, notif_type, related_task_id=None, related_conversation_id=None, send_email=True):
+def create_notification_with_email(user_id, title, message, notif_type, related_task_id=None, related_conversation_id=None, related_group_id=None, send_email=True):
     """
     Helper function to create a notification and optionally send an email
     
@@ -69,7 +70,8 @@ def create_notification_with_email(user_id, title, message, notif_type, related_
             message=message,
             type=notif_type,
             related_task_id=related_task_id,
-            related_conversation_id=related_conversation_id
+            related_conversation_id=related_conversation_id,
+            related_group_id=related_group_id
         )
         db.session.add(notification)
         db.session.commit()
@@ -486,6 +488,27 @@ def resolve_notification(notification_id):
                     }
                     query_string = urlencode(params)
                     redirect_url = f"/chat?conversationId={conversation.id}&{query_string}"
+        
+        # Group-related notifications
+        elif notification.related_group_id:
+            group = ChatGroup.query.get(notification.related_group_id)
+            if not group:
+                error = 'Group not found'
+            else:
+                # Verify user is a member of the group
+                membership = ChatGroupMember.query.filter_by(
+                    group_id=group.id,
+                    user_id=current_user_id
+                ).first()
+                if not membership:
+                    error = 'Access denied to this group'
+                else:
+                    params = {
+                        'origin': 'notif',
+                        'notifId': str(notification_id)
+                    }
+                    query_string = urlencode(params)
+                    redirect_url = f"/groups?groupId={group.id}&{query_string}"
         
         # Project-related notifications (if we add project_id to notifications later)
         # For now, project notifications might be linked via task.project_id

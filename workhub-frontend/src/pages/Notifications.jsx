@@ -89,7 +89,7 @@ const Notifications = () => {
 
   const handleNotificationClick = async (notification) => {
     // Don't resolve if already resolving or if notification has no related resource
-    if (resolvingId || (!notification.related_task_id && !notification.related_conversation_id)) {
+    if (resolvingId || (!notification.related_task_id && !notification.related_conversation_id && !notification.related_group_id)) {
       return;
     }
 
@@ -141,7 +141,7 @@ const Notifications = () => {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {notifications.map(notif => {
-              const isClickable = notif.related_task_id || notif.related_conversation_id;
+              const isClickable = notif.related_task_id || notif.related_conversation_id || notif.related_group_id;
               const isResolving = resolvingId === notif.id;
               
               return (

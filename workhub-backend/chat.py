@@ -1171,13 +1171,13 @@ def create_group():
         # Fire notifications for invited users (best-effort)
         try:
             for uid in invited_ids:
-                create_notification(
-                    user_id=uid,
-                    title='Group Invitation',
-                    message=f'{current_user.name} invited you to join group "{name}"',
-                    notif_type='group_invitation',
-                    related_conversation_id=None
-                )
+                    create_notification(
+                        user_id=uid,
+                        title='Group Invitation',
+                        message=f'{current_user.name} invited you to join group "{name}"',
+                        notif_type='group_invitation',
+                        related_group_id=group.id
+                    )
         except Exception:
             pass
         return jsonify(group.to_dict()), 201
