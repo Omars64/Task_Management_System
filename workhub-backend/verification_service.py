@@ -432,6 +432,52 @@ class VerificationService:
     @staticmethod
     def send_approval_email(user, mail):
         """Send email to user when their signup is approved"""
+        from flask import current_app
+        app = current_app._get_current_object() if hasattr(current_app, '_get_current_object') else current_app
+        
+        if not mail:
+            print("⚠ Mail instance not available - cannot send approval email")
+            return False
+        
+        # Verify mail configuration (re-load if necessary)
+        mail_username = app.config.get('MAIL_USERNAME') or app.config.get('SMTP_USERNAME', '')
+        mail_password = app.config.get('MAIL_PASSWORD') or app.config.get('SMTP_PASSWORD', '')
+        
+        if not mail_username or not mail_password:
+            try:
+                from models import SystemSettings
+                settings = SystemSettings.query.first()
+                if settings and settings.smtp_username and settings.smtp_password:
+                    mail_username = settings.smtp_username
+                    mail_password = settings.smtp_password
+                    app.config['MAIL_USERNAME'] = mail_username
+                    app.config['MAIL_PASSWORD'] = mail_password
+                    app.config['SMTP_USERNAME'] = mail_username
+                    app.config['SMTP_PASSWORD'] = mail_password
+                    if settings.smtp_server:
+                        app.config['MAIL_SERVER'] = settings.smtp_server
+                        app.config['SMTP_SERVER'] = settings.smtp_server
+                    if settings.smtp_port:
+                        app.config['MAIL_PORT'] = settings.smtp_port
+                        app.config['SMTP_PORT'] = settings.smtp_port
+                    if settings.smtp_from_email:
+                        app.config['MAIL_DEFAULT_SENDER'] = settings.smtp_from_email
+                        app.config['SMTP_FROM_EMAIL'] = settings.smtp_from_email
+                    # Reinitialize mail with new config
+                    from flask_mail import Mail
+                    new_mail = Mail(app)
+                    app.extensions['mail'] = new_mail
+                    mail = new_mail
+            except Exception as e:
+                print(f"Could not load email config from SystemSettings: {e}")
+        
+        if not mail_username or not mail_password:
+            print(f"✗ Mail credentials not configured - cannot send approval email to {user.email}")
+            return False
+        
+        frontend_url = app.config.get('FRONTEND_URL', 'http://localhost:3000')
+        login_url = f"{frontend_url.rstrip('/')}/login"
+        
         msg = Message(
             subject="Your Account Has Been Approved - WorkHub",
             recipients=[user.email],
@@ -445,7 +491,7 @@ class VerificationService:
                         <p>You can now log in and start using the task management system.</p>
                         
                         <p style="text-align: center; margin: 30px 0;">
-                            <a href="http://localhost:3000/login" 
+                            <a href="{login_url}" 
                                style="background-color: #4CAF50; color: white; padding: 12px 30px; 
                                       text-decoration: none; border-radius: 5px; display: inline-block;">
                                 Log In Now
@@ -469,7 +515,7 @@ class VerificationService:
             Great news! Your WorkHub account has been approved by an administrator.
             You can now log in and start using the task management system.
             
-            Visit: http://localhost:3000/login
+            Visit: {login_url}
             
             ---
             WorkHub Task Management System
@@ -477,10 +523,31 @@ class VerificationService:
         )
         
         try:
-            mail.send(msg)
-            return True
+            # Set a timeout for email sending
+            import socket
+            original_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(10)
+            try:
+                mail.send(msg)
+                return True
+            finally:
+                socket.setdefaulttimeout(original_timeout)
+        except (OSError, ConnectionError) as e:
+            error_code = getattr(e, 'errno', None)
+            error_str = str(e)
+            if error_code == 101 or 'Network is unreachable' in error_str or '[Errno 101]' in error_str:
+                mail_server = app.config.get('MAIL_SERVER', 'SMTP server')
+                print(f"✗ Network connectivity error: Cloud Run cannot reach {mail_server}")
+                print(f"  Error: {e}")
+            else:
+                print(f"✗ Network error sending approval email to {user.email}: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
         except Exception as e:
             print(f"Error sending approval email: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     @staticmethod
