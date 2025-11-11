@@ -126,20 +126,36 @@ jobs:
             # Check if VPC connector exists in the project
             VPC_CONNECTOR=$(gcloud compute networks vpc-access connectors list --region=${{ env.REGION }} --format="value(name)" 2>/dev/null | head -1)
             
-            # Strategy: If VPC connector exists but is causing issues, we'll remove it
-            # Cloud Run has default outbound internet access without VPC connector
-            # Only use VPC connector if explicitly needed for other services
+            # Strategy: VPC connector is REQUIRED for Cloud SQL private IP access (10.119.176.3)
+            # But we need vpc-egress=all-traffic to allow outbound internet for email
+            # Check if VPC connector exists - we need it for database connectivity
             VPC_ARGS=""
-            if [ -n "$CURRENT_VPC_CONNECTOR" ]; then
-              echo "⚠️ Service currently has VPC connector: $CURRENT_VPC_CONNECTOR"
-              echo "   Current egress: ${CURRENT_VPC_EGRESS:-default}"
-              echo "   Removing VPC connector to enable default outbound internet access..."
-              VPC_ARGS="--clear-vpc-connector"
-            elif [ -n "$VPC_CONNECTOR" ]; then
-              echo "ℹ️ VPC connector exists in project but not attached to service"
-              echo "   Using default outbound internet access (no VPC connector)"
+            if [ -n "$VPC_CONNECTOR" ]; then
+              echo "✅ VPC connector found: $VPC_CONNECTOR"
+              echo "   Required for Cloud SQL private IP access (10.119.176.3)"
+              echo "   Configuring with all-traffic egress for email connectivity..."
+              VPC_ARGS="--vpc-connector=$VPC_CONNECTOR --vpc-egress=all-traffic"
+            elif [ -n "$CURRENT_VPC_CONNECTOR" ]; then
+              echo "⚠️ Service has VPC connector but not found in project: $CURRENT_VPC_CONNECTOR"
+              echo "   Keeping existing connector and setting all-traffic egress..."
+              VPC_ARGS="--vpc-egress=all-traffic"
             else
-              echo "✅ No VPC connector - Cloud Run will use default outbound internet access"
+              echo "⚠️ WARNING: No VPC connector found!"
+              echo "   Database connection to 10.119.176.3 will fail without VPC connector"
+              echo "   Creating VPC connector for Cloud SQL access..."
+              # Try to create a VPC connector if it doesn't exist
+              gcloud compute networks vpc-access connectors create workhub-connector \
+                --region=${{ env.REGION }} \
+                --network=default \
+                --range=10.8.0.0/28 \
+                --project=${{ env.PROJECT_ID }} 2>/dev/null || echo "VPC connector creation failed or already exists"
+              VPC_CONNECTOR=$(gcloud compute networks vpc-access connectors list --region=${{ env.REGION }} --format="value(name)" 2>/dev/null | head -1)
+              if [ -n "$VPC_CONNECTOR" ]; then
+                echo "✅ VPC connector created/found: $VPC_CONNECTOR"
+                VPC_ARGS="--vpc-connector=$VPC_CONNECTOR --vpc-egress=all-traffic"
+              else
+                echo "❌ Failed to create/find VPC connector - database may not work"
+              fi
             fi
             
             if gcloud run deploy workhub-backend \
@@ -149,8 +165,10 @@ jobs:
               --allow-unauthenticated \
               --memory 2Gi \
               --cpu 2 \
-              --min-instances 1 \
+              --min-instances 2 \
               --max-instances 10 \
+              --concurrency 80 \
+              --cpu-boost \
               --timeout 300 \
               $VPC_ARGS \
               --set-cloudsql-instances ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
@@ -160,25 +178,25 @@ jobs:
               --quiet; then
               echo "✅ Backend deployed successfully"
               
-              # CRITICAL: Ensure no VPC connector is blocking outbound internet access
-              # Cloud Run has default outbound internet access when no VPC connector is attached
-              echo "Verifying network configuration for email connectivity..."
-              FINAL_VPC_CONNECTOR=$(gcloud run services describe workhub-backend \
+              # CRITICAL: Verify VPC egress is set to all-traffic for email connectivity
+              # VPC connector is needed for database, but egress must allow internet for email
+              echo "Verifying network configuration..."
+              FINAL_VPC_EGRESS=$(gcloud run services describe workhub-backend \
                 --region=${{ env.REGION }} \
-                --format="value(spec.template.spec.containers[0].vpcAccess.connector)" 2>/dev/null || echo "")
+                --format="value(spec.template.spec.containers[0].vpcAccess.egress)" 2>/dev/null || echo "NONE")
               
-              if [ -n "$FINAL_VPC_CONNECTOR" ]; then
-                echo "⚠️ WARNING: VPC connector still attached: $FINAL_VPC_CONNECTOR"
-                echo "   This may block outbound internet access. Removing it..."
+              if [ "$FINAL_VPC_EGRESS" != "ALL_TRAFFIC" ]; then
+                echo "⚠️ VPC egress not set to ALL_TRAFFIC - updating for email connectivity..."
                 gcloud run services update workhub-backend \
                   --region=${{ env.REGION }} \
-                  --clear-vpc-connector \
+                  --vpc-egress=all-traffic \
                   --quiet
-                echo "✅ VPC connector removed - using default outbound internet access"
+                echo "✅ VPC egress updated to ALL_TRAFFIC"
               else
-                echo "✅ No VPC connector attached - Cloud Run has default outbound internet access"
-                echo "✅ Email connectivity should work now"
+                echo "✅ VPC egress correctly set to ALL_TRAFFIC"
               fi
+              echo "✅ Database connectivity: VPC connector enables private IP access"
+              echo "✅ Email connectivity: all-traffic egress enables outbound internet"
               
               exit 0
             else
@@ -223,7 +241,7 @@ jobs:
               --allow-unauthenticated \
               --memory 512Mi \
               --cpu 1 \
-              --min-instances 1 \
+              --min-instances 2 \
               --max-instances 5 \
               --timeout 60 \
               --port 8080 \

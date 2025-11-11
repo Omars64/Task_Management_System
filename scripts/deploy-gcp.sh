@@ -123,8 +123,10 @@ gcloud run deploy $BACKEND_SERVICE \
     --allow-unauthenticated \
     --memory 2Gi \
     --cpu 2 \
-    --min-instances 1 \
+    --min-instances 2 \
     --max-instances 10 \
+    --concurrency 80 \
+    --cpu-boost \
     --timeout 300 \
     --set-cloudsql-instances $CLOUD_SQL_CONNECTION \
     --set-secrets DB_PASSWORD=workhub-db-password:latest,SECRET_KEY=workhub-secret-key:latest,JWT_SECRET_KEY=workhub-jwt-secret:latest,MAIL_PASSWORD=workhub-mail-password:latest \
