@@ -263,6 +263,58 @@ def create_app():
     def health_check():
         return jsonify({'status': 'healthy', 'message': 'Work Hub API is running'}), 200
     
+    # Email connectivity test endpoint (for debugging)
+    @app.route('/api/health/email', methods=['GET'])
+    def email_health_check():
+        """Test email connectivity - checks if SMTP server is reachable"""
+        from flask_jwt_extended import jwt_required, get_jwt_identity
+        from auth import get_current_user
+        from permissions import Permission
+        
+        # Only allow admins to check email health
+        current_user = get_current_user()
+        if not current_user or not current_user.has_permission(Permission.SETTINGS_VIEW):
+            return jsonify({"error": "Access denied"}), 403
+        
+        import socket
+        mail_server = app.config.get('MAIL_SERVER', 'smtp.gmail.com')
+        mail_port = app.config.get('MAIL_PORT', 587)
+        
+        try:
+            # Try to connect to SMTP server
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            result = sock.connect_ex((mail_server, mail_port))
+            sock.close()
+            
+            if result == 0:
+                return jsonify({
+                    'status': 'reachable',
+                    'server': mail_server,
+                    'port': mail_port,
+                    'message': f'Successfully connected to {mail_server}:{mail_port}'
+                }), 200
+            else:
+                return jsonify({
+                    'status': 'unreachable',
+                    'server': mail_server,
+                    'port': mail_port,
+                    'error': f'Cannot connect to {mail_server}:{mail_port} (error code: {result})',
+                    'suggestion': 'Check VPC egress configuration: gcloud run services update workhub-backend --region=us-central1 --vpc-egress=all-traffic'
+                }), 503
+        except socket.gaierror as e:
+            return jsonify({
+                'status': 'dns_error',
+                'server': mail_server,
+                'error': f'DNS resolution failed for {mail_server}: {str(e)}'
+            }), 503
+        except Exception as e:
+            return jsonify({
+                'status': 'error',
+                'server': mail_server,
+                'error': str(e)
+            }), 500
+    
     # Error handlers
     @app.errorhandler(404)
     def not_found(error):

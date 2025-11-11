@@ -119,7 +119,10 @@ jobs:
             VPC_CONNECTOR=$(gcloud compute networks vpc-access connectors list --region=${{ env.REGION }} --format="value(name)" 2>/dev/null | head -1)
             VPC_ARGS=""
             if [ -n "$VPC_CONNECTOR" ]; then
+              echo "VPC connector found: $VPC_CONNECTOR - enabling all-traffic egress"
               VPC_ARGS="--vpc-egress=all-traffic"
+            else
+              echo "No VPC connector found - Cloud Run has default outbound internet access"
             fi
             
             if gcloud run deploy workhub-backend \
@@ -139,6 +142,31 @@ jobs:
               --service-account ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }} \
               --quiet; then
               echo "✅ Backend deployed successfully"
+              
+              # CRITICAL: Ensure VPC egress is configured for email functionality
+              # This is required for Cloud Run to reach external SMTP servers
+              echo "Verifying VPC egress configuration for email connectivity..."
+              CURRENT_VPC_EGRESS=$(gcloud run services describe workhub-backend \
+                --region=${{ env.REGION }} \
+                --format="value(spec.template.spec.containers[0].vpcAccess.egress)" 2>/dev/null || echo "NONE")
+              
+              if [ -n "$VPC_CONNECTOR" ]; then
+                if [ "$CURRENT_VPC_EGRESS" != "ALL_TRAFFIC" ]; then
+                  echo "⚠️ VPC connector exists but egress is not set to ALL_TRAFFIC"
+                  echo "Updating VPC egress to allow outbound internet access..."
+                  gcloud run services update workhub-backend \
+                    --region=${{ env.REGION }} \
+                    --vpc-egress=all-traffic \
+                    --quiet
+                  echo "✅ VPC egress updated to ALL_TRAFFIC"
+                else
+                  echo "✅ VPC egress already configured correctly (ALL_TRAFFIC)"
+                fi
+              else
+                echo "ℹ️ No VPC connector - Cloud Run has default outbound internet access"
+                echo "If email fails, check Cloud Run service account permissions and firewall rules"
+              fi
+              
               exit 0
             else
               retry_count=$((retry_count + 1))
