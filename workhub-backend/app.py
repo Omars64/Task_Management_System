@@ -39,7 +39,13 @@ def create_app():
     allowed_origins = os.environ.get('ALLOWED_ORIGINS', '*')
     if allowed_origins != '*':
         allowed_origins = [origin.strip() for origin in allowed_origins.split(',')]
-    CORS(app, resources={r"/*": {"origins": allowed_origins}})
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": allowed_origins}},
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
+    )
     
     # Configure JWT settings for session timeout
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30)  # 30 minute session timeout

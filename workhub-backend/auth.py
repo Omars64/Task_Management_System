@@ -609,9 +609,12 @@ def get_rejected_users():
     }), 200
 
 
-@auth_bp.post("/approve-user/<int:user_id>")
+@auth_bp.route("/approve-user/<int:user_id>", methods=["POST", "OPTIONS"])
 @admin_required
 def approve_user(user_id):
+    # Handle CORS preflight explicitly
+    if request.method == 'OPTIONS':
+        return jsonify({'ok': True}), 200
     """
     Approve a pending user signup (admin only)
     JSON: {} (no body needed)
@@ -652,9 +655,12 @@ def approve_user(user_id):
     }), 200
 
 
-@auth_bp.post("/reject-user/<int:user_id>")
+@auth_bp.route("/reject-user/<int:user_id>", methods=["POST", "OPTIONS"])
 @admin_required
 def reject_user(user_id):
+    # Handle CORS preflight explicitly
+    if request.method == 'OPTIONS':
+        return jsonify({'ok': True}), 200
     """
     Reject a pending user signup (admin only)
     JSON: { "reason": "..." } (optional)
