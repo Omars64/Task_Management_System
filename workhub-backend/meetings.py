@@ -128,9 +128,15 @@ def create_meeting():
 
     except SQLAlchemyError as e:
         db.session.rollback()
-        return jsonify({'error': 'Database error occurred.'}), 500
+        import traceback
+        print(f"[Meeting Creation Error] SQLAlchemyError: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': f'Database error occurred: {str(e)}'}), 500
     except Exception as e:
         db.session.rollback()
+        import traceback
+        print(f"[Meeting Creation Error] Exception: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 

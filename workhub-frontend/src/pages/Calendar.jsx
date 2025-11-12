@@ -394,9 +394,10 @@ const CalendarPage = () => {
       fetchCalendarData();
       fetchPendingInvitations();
     } catch (error) {
-      const msg = error.response?.data?.error || 'Failed to create meeting';
+      console.error('Meeting creation error:', error);
+      const msg = error.response?.data?.error || error.message || 'Failed to create meeting';
       addToast(msg, { type: 'error' });
-      showError(msg, 'Error');
+      showError(msg, 'Error Creating Meeting');
     }
   };
 

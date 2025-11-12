@@ -213,27 +213,104 @@ def delete_user(user_id: int):
             return jsonify({"error": "Only a Super Admin can delete a Super Admin account"}), 403
 
         # Cleanup dependent references to avoid FK errors
-        from models import Task, TimeLog, Comment, FileAttachment, NotificationPreference
+        from models import (
+            Task, TimeLog, Comment, FileAttachment, NotificationPreference,
+            Reminder, Meeting, MeetingInvitation, ChatConversation, ChatMessage,
+            ProjectMember, Project, Notification, MessageReaction,
+            ChatGroup, ChatGroupMember, GroupMessage, GroupMessageRead,
+            GroupMessageReaction, GroupInvitation
+        )
+        
         # Null out task references
         Task.query.filter_by(assigned_to=user_id).update({Task.assigned_to: None}, synchronize_session=False)
         Task.query.filter_by(created_by=user_id).update({Task.created_by: None}, synchronize_session=False)
         db.session.flush()
-        # Delete user-owned logs/comments/files
+        
+        # Null out project owner references (or delete if no other members)
+        projects_owned = Project.query.filter_by(owner_id=user_id).all()
+        for project in projects_owned:
+            # Check if project has other members
+            other_members = ProjectMember.query.filter(
+                ProjectMember.project_id == project.id,
+                ProjectMember.user_id != user_id
+            ).first()
+            if other_members:
+                # Reassign to first other member
+                project.owner_id = other_members.user_id
+            else:
+                # No other members, delete the project (cascade will handle members)
+                db.session.delete(project)
+        db.session.flush()
+        
+        # Delete user-owned data
         TimeLog.query.filter_by(user_id=user_id).delete(synchronize_session=False)
         Comment.query.filter_by(user_id=user_id).delete(synchronize_session=False)
         FileAttachment.query.filter_by(user_id=user_id).delete(synchronize_session=False)
         NotificationPreference.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        Reminder.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        Notification.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        db.session.flush()
+        
+        # Delete meeting invitations
+        MeetingInvitation.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        # Delete meetings created by user (cascade will handle invitations)
+        Meeting.query.filter_by(created_by=user_id).delete(synchronize_session=False)
+        db.session.flush()
+        
+        # Delete chat conversations (where user is user1, user2, or requester)
+        from sqlalchemy import or_
+        ChatConversation.query.filter(
+            or_(
+                ChatConversation.user1_id == user_id,
+                ChatConversation.user2_id == user_id,
+                ChatConversation.requested_by == user_id
+            )
+        ).delete(synchronize_session=False)
+        db.session.flush()
+        
+        # Delete chat messages
+        ChatMessage.query.filter(
+            or_(
+                ChatMessage.sender_id == user_id,
+                ChatMessage.recipient_id == user_id
+            )
+        ).delete(synchronize_session=False)
+        db.session.flush()
+        
+        # Delete message reactions
+        MessageReaction.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        db.session.flush()
+        
+        # Delete project memberships
+        ProjectMember.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        db.session.flush()
+        
+        # Delete group memberships and related data
+        ChatGroupMember.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        GroupMessageRead.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        GroupMessageReaction.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        GroupInvitation.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        # Delete group messages sent by user
+        GroupMessage.query.filter_by(sender_id=user_id).delete(synchronize_session=False)
+        # Delete groups created by user (cascade will handle members/messages)
+        ChatGroup.query.filter_by(created_by=user_id).delete(synchronize_session=False)
         db.session.flush()
 
         db.session.delete(user)
         db.session.commit()
         return jsonify({"message": "User deleted successfully"}), 200
 
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
         db.session.rollback()
-        return jsonify({"error": "Database error occurred."}), 500
+        import traceback
+        print(f"[User Deletion Error] SQLAlchemyError: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({"error": f"Database error occurred: {str(e)}"}), 500
     except Exception as e:
         db.session.rollback()
+        import traceback
+        print(f"[User Deletion Error] Exception: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 
