@@ -362,10 +362,13 @@ const CalendarPage = () => {
     }
     try {
       const payload = {
-        ...meetingForm,
+        title: meetingForm.title,
+        description: meetingForm.description || '',
         start_time: moment(meetingForm.start_time).toISOString(),
         end_time: moment(meetingForm.end_time).toISOString(),
-        project_id: meetingForm.project_id || null
+        location: meetingForm.location || '',
+        project_id: meetingForm.project_id ? parseInt(meetingForm.project_id) : null,
+        invite_user_ids: Array.isArray(meetingForm.invite_user_ids) ? meetingForm.invite_user_ids : []
       };
       
       await meetingsAPI.create(payload);
