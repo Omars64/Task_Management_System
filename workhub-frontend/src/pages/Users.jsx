@@ -5,6 +5,7 @@ import { PasswordStrength } from '../components/PasswordStrength';
 import PendingUsers from '../components/PendingUsers';
 import { useModal } from '../hooks/useModal';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import Modal from '../components/Modal';
 
 // Validators (aligned with backend relaxed rules)
@@ -56,6 +57,7 @@ function validateConfirmPassword(password, confirm, { required }) {
 const Users = () => {
   const { user: currentUser } = useAuth();
   const { modalState, showAlert, showConfirm, showError, showSuccess, closeModal: closeGlobalModal } = useModal();
+  const { addToast } = useToast();
   const [users, setUsers] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -144,16 +146,44 @@ const Users = () => {
     setSubmitting(true);
     try {
       if (selectedUser) {
+        const oldRole = (selectedUser.role || 'viewer').toLowerCase();
+        const newRole = (formData.role || 'viewer').toLowerCase();
+        const roleChanged = oldRole !== newRole;
+        
         const payload = {
           name: formData.name.trim(),
           email: formData.email.trim(),
-          role: (formData.role || 'viewer').toLowerCase(),
+          role: newRole,
         };
         if (formData.password) {
           payload.password = formData.password;
           if (formData.confirm) payload.confirm = formData.confirm;
         }
+        
         await usersAPI.update(selectedUser.id, payload);
+        
+        // Show role change notification if role was changed
+        if (roleChanged) {
+          const roleNames = {
+            'super_admin': 'Super Admin',
+            'admin': 'Admin',
+            'manager': 'Manager',
+            'team_lead': 'Team Lead',
+            'developer': 'Developer',
+            'viewer': 'Viewer'
+          };
+          const oldRoleName = roleNames[oldRole] || oldRole;
+          const newRoleName = roleNames[newRole] || newRole;
+          const action = ['super_admin', 'admin', 'manager'].includes(newRole) && 
+                        ['team_lead', 'developer', 'viewer'].includes(oldRole) ? 'promoted' : 
+                        ['team_lead', 'developer', 'viewer'].includes(newRole) && 
+                        ['super_admin', 'admin', 'manager'].includes(oldRole) ? 'demoted' : 'changed';
+          
+          addToast(
+            `User ${selectedUser.name} ${action} from ${oldRoleName} to ${newRoleName}`,
+            { type: 'success' }
+          );
+        }
       } else {
         const payload = {
           name: formData.name.trim(),
@@ -169,7 +199,25 @@ const Users = () => {
       fetchUsers();
     } catch (error) {
       setSubmitting(false);
-      showError(error?.response?.data?.error || error?.message || 'Failed to save user', 'Error Saving User');
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to save user';
+      
+      // Check if this was a role change attempt
+      if (selectedUser) {
+        const oldRole = (selectedUser.role || 'viewer').toLowerCase();
+        const newRole = (formData.role || 'viewer').toLowerCase();
+        const roleChanged = oldRole !== newRole;
+        
+        if (roleChanged) {
+          addToast(
+            `Failed to change user role: ${errorMessage}`,
+            { type: 'error' }
+          );
+        } else {
+          showError(errorMessage, 'Error Saving User');
+        }
+      } else {
+        showError(errorMessage, 'Error Saving User');
+      }
     }
   };
 
