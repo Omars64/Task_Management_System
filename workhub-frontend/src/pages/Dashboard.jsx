@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { tasksAPI, reportsAPI, projectsAPI, usersAPI } from '../services/api';
-import { FiCheckSquare, FiClock, FiTrendingUp, FiUsers, FiFolder } from 'react-icons/fi';
+import { FiCheckSquare, FiClock, FiTrendingUp, FiUsers, FiFolder, FiArrowRight } from 'react-icons/fi';
 import './Dashboard.css';
 
 const Dashboard = () => {
   const { user, isAdmin } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [recentTasks, setRecentTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +81,14 @@ const Dashboard = () => {
     }
   };
 
+  const handleCardClick = (path) => {
+    navigate(path);
+  };
+
+  const handleTaskClick = (taskId) => {
+    navigate(`/tasks?taskId=${taskId}&origin=dashboard`);
+  };
+
   if (loading) {
     return <div className="spinner" />;
   }
@@ -93,7 +103,19 @@ const Dashboard = () => {
       <div className="stats-grid">
         {isAdmin() ? (
           <>
-            <div className="stat-card">
+            <div 
+              className="stat-card clickable" 
+              onClick={() => handleCardClick('/tasks')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleCardClick('/tasks');
+                }
+              }}
+              aria-label="View all tasks"
+            >
               <div className="stat-icon primary">
                 <FiCheckSquare />
               </div>
@@ -102,7 +124,19 @@ const Dashboard = () => {
                 <div className="stat-label">Total Tasks</div>
               </div>
             </div>
-            <div className="stat-card">
+            <div 
+              className="stat-card clickable" 
+              onClick={() => handleCardClick('/tasks?status=completed')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleCardClick('/tasks?status=completed');
+                }
+              }}
+              aria-label="View completed tasks"
+            >
               <div className="stat-icon success">
                 <FiTrendingUp />
               </div>
@@ -111,7 +145,19 @@ const Dashboard = () => {
                 <div className="stat-label">Completed</div>
               </div>
             </div>
-            <div className="stat-card">
+            <div 
+              className="stat-card clickable" 
+              onClick={() => handleCardClick('/tasks?status=in_progress')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleCardClick('/tasks?status=in_progress');
+                }
+              }}
+              aria-label="View in progress tasks"
+            >
               <div className="stat-icon warning">
                 <FiClock />
               </div>
@@ -120,7 +166,19 @@ const Dashboard = () => {
                 <div className="stat-label">In Progress</div>
               </div>
             </div>
-            <div className="stat-card">
+            <div 
+              className="stat-card clickable" 
+              onClick={() => handleCardClick('/users')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleCardClick('/users');
+                }
+              }}
+              aria-label="View all users"
+            >
               <div className="stat-icon info">
                 <FiUsers />
               </div>
@@ -132,7 +190,19 @@ const Dashboard = () => {
           </>
         ) : (
           <>
-            <div className="stat-card">
+            <div 
+              className="stat-card clickable" 
+              onClick={() => handleCardClick('/tasks')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleCardClick('/tasks');
+                }
+              }}
+              aria-label="View all tasks"
+            >
               <div className="stat-icon primary">
                 <FiCheckSquare />
               </div>
@@ -141,7 +211,19 @@ const Dashboard = () => {
                 <div className="stat-label">Total Tasks</div>
               </div>
             </div>
-            <div className="stat-card">
+            <div 
+              className="stat-card clickable" 
+              onClick={() => handleCardClick('/tasks?status=completed')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleCardClick('/tasks?status=completed');
+                }
+              }}
+              aria-label="View completed tasks"
+            >
               <div className="stat-icon success">
                 <FiTrendingUp />
               </div>
@@ -150,7 +232,19 @@ const Dashboard = () => {
                 <div className="stat-label">Completed</div>
               </div>
             </div>
-            <div className="stat-card">
+            <div 
+              className="stat-card clickable" 
+              onClick={() => handleCardClick('/tasks?status=in_progress')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleCardClick('/tasks?status=in_progress');
+                }
+              }}
+              aria-label="View in progress tasks"
+            >
               <div className="stat-icon warning">
                 <FiClock />
               </div>
@@ -159,7 +253,19 @@ const Dashboard = () => {
                 <div className="stat-label">In Progress</div>
               </div>
             </div>
-            <div className="stat-card">
+            <div 
+              className="stat-card clickable" 
+              onClick={() => handleCardClick('/tasks?status=todo')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleCardClick('/tasks?status=todo');
+                }
+              }}
+              aria-label="View to do tasks"
+            >
               <div className="stat-icon danger">
                 <FiCheckSquare />
               </div>
@@ -170,7 +276,19 @@ const Dashboard = () => {
             </div>
           </>
         )}
-        <div className="stat-card">
+        <div 
+          className="stat-card clickable" 
+          onClick={() => handleCardClick('/projects')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleCardClick('/projects');
+            }
+          }}
+          aria-label="View all projects"
+        >
           <div className="stat-icon info">
             <FiFolder />
           </div>
@@ -182,13 +300,37 @@ const Dashboard = () => {
       </div>
 
       <div className="card">
-        <h2 className="card-title">Recent Tasks</h2>
+        <div className="card-header-with-action">
+          <h2 className="card-title">Recent Tasks</h2>
+          {recentTasks.length > 0 && (
+            <button 
+              className="btn-link"
+              onClick={() => handleCardClick('/tasks')}
+              aria-label="View all tasks"
+            >
+              View All <FiArrowRight style={{ marginLeft: 4 }} />
+            </button>
+          )}
+        </div>
         {recentTasks.length === 0 ? (
           <p className="text-light text-center">No tasks available</p>
         ) : (
           <div className="tasks-list">
             {recentTasks.map(task => (
-              <div key={task.id} className="task-item">
+              <div 
+                key={task.id} 
+                className="task-item clickable"
+                onClick={() => handleTaskClick(task.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleTaskClick(task.id);
+                  }
+                }}
+                aria-label={`View task: ${task.title}`}
+              >
                 <div className="task-info">
                   <h3 className="task-title">{task.title}</h3>
                   <p className="task-description">{task.description}</p>

@@ -140,3 +140,77 @@
   color: var(--text-light);
   white-space: nowrap;
 }
+
+/* Clickable stat cards */
+.stat-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+}
+
+.stat-card.clickable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.stat-card.clickable:active {
+  transform: translateY(-2px);
+}
+
+.stat-card.clickable:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* Clickable task items */
+.task-item.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-item.clickable:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateX(4px);
+}
+
+.task-item.clickable:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* Card header with action button */
+.card-header-with-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.card-header-with-action .card-title {
+  margin-bottom: 0;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--primary-color);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.btn-link:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--primary-color);
+}
+
+.btn-link:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}

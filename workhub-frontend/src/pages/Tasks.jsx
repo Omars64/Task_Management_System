@@ -93,8 +93,8 @@ const Tasks = () => {
     const taskId = params.get('taskId');
     const origin = params.get('origin');
     
-    // Only process deep-link if origin is 'notif' or taskId is present
-    if (taskId && origin === 'notif' && !showTaskDetail) {
+    // Process deep-link if origin is 'notif', 'dashboard', or taskId is present without origin
+    if (taskId && (origin === 'notif' || origin === 'dashboard' || !origin) && !showTaskDetail) {
       const taskIdNum = Number(taskId);
       if (Number.isFinite(taskIdNum) && taskIdNum > 0) {
         // Find task in current list or fetch it
@@ -111,6 +111,14 @@ const Tasks = () => {
               console.error('Failed to fetch task for deep-link:', error);
               addToast('Task not found', { type: 'error' });
             });
+        }
+        // Clean up URL parameters after processing
+        if (origin === 'dashboard' || origin === 'notif') {
+          const newParams = new URLSearchParams(window.location.search);
+          newParams.delete('taskId');
+          newParams.delete('origin');
+          const newUrl = newParams.toString() ? `/tasks?${newParams.toString()}` : '/tasks';
+          window.history.replaceState(null, '', newUrl);
         }
       }
     }
