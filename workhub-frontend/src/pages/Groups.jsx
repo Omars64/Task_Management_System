@@ -49,6 +49,7 @@ const Groups = () => {
   const messagesContainerRef = useRef(null);
   const typingTimerRef = useRef(null);
   const invitesButtonRef = useRef(null);
+  const hasScrolledRef = useRef(false);
 
   const getCurrentUserId = () => {
     try {
@@ -61,7 +62,7 @@ const Groups = () => {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
 
   useEffect(() => {
@@ -89,6 +90,8 @@ const Groups = () => {
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (!selectedGroup) return;
+    // Reset scroll flag when group changes
+    hasScrolledRef.current = false;
     // also load group details (members/roles)
     (async () => {
       try {
@@ -114,7 +117,6 @@ const Groups = () => {
         ]);
         setMessages(msgRes.data || []);
         setTyping((typingRes.data && typingRes.data.typing) || []);
-        // Auto-scroll removed - users can manually scroll to view messages
       } catch (_) {}
     };
     load();
@@ -122,7 +124,16 @@ const Groups = () => {
     return () => pollRef.current && clearInterval(pollRef.current);
   }, [selectedGroup?.id]);
 
-  // Auto-scroll removed - users can manually scroll to view messages
+  // Scroll to bottom when group is first selected (only once, not on every message update)
+  useEffect(() => {
+    if (selectedGroup && messages.length > 0 && !hasScrolledRef.current) {
+      // Small delay to ensure messages are rendered in DOM
+      setTimeout(() => {
+        scrollToBottom();
+        hasScrolledRef.current = true;
+      }, 50);
+    }
+  }, [selectedGroup?.id, messages.length]);
 
   const fetchGroups = async () => {
     try {
@@ -640,15 +651,12 @@ const Groups = () => {
                 })()}
               </div>
               <div className="messages-container" ref={messagesContainerRef}>
-                <div className="messages-list">
                   {messages.map(m => {
                     const isSent = m.sender_id === getCurrentUserId();
-                    const senderInitials = getSenderInitials(m.sender_name);
                     return (
                       <div
                         key={m.id}
                         className={`message ${isSent ? 'sent' : 'received'}`}
-                        style={{ marginBottom: '8px' }}
                         onContextMenu={(e) => openContextPopover(e, m)}
                         onClick={(e) => {
                           if (!e.target.closest('.message-reactions')) {
@@ -656,14 +664,9 @@ const Groups = () => {
                           }
                         }}
                       >
-                        {!isSent && (
-                          <div className="message-sender-avatar">
-                            {senderInitials}
-                          </div>
-                        )}
                         <div className="message-content">
                           {!isSent && (
-                            <div className="message-sender-name">{m.sender_name}</div>
+                            <div className="message-sender">{m.sender_name}</div>
                           )}
                           {m.reply_to && (
                             <div className="message-reply-preview">
@@ -798,7 +801,6 @@ const Groups = () => {
                     );
                   })}
                   <div ref={messagesEndRef} />
-                </div>
                 {typing && typing.length > 0 && (
                   <div style={{ padding: '6px 12px', color: '#666', fontSize: 12 }}>
                     {typing.map(t => t.name).join(', ')} typing...
