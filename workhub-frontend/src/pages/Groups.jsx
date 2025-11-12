@@ -48,7 +48,6 @@ const Groups = () => {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const typingTimerRef = useRef(null);
-  const hasScrolledRef = useRef(false);
   const invitesButtonRef = useRef(null);
 
   const getCurrentUserId = () => {
@@ -90,7 +89,6 @@ const Groups = () => {
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (!selectedGroup) return;
-    hasScrolledRef.current = false;
     // also load group details (members/roles)
     (async () => {
       try {
@@ -116,10 +114,7 @@ const Groups = () => {
         ]);
         setMessages(msgRes.data || []);
         setTyping((typingRes.data && typingRes.data.typing) || []);
-        if (!hasScrolledRef.current) {
-          setTimeout(scrollToBottom, 100);
-          hasScrolledRef.current = true;
-        }
+        // Auto-scroll removed - users can manually scroll to view messages
       } catch (_) {}
     };
     load();
@@ -127,9 +122,7 @@ const Groups = () => {
     return () => pollRef.current && clearInterval(pollRef.current);
   }, [selectedGroup?.id]);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  // Auto-scroll removed - users can manually scroll to view messages
 
   const fetchGroups = async () => {
     try {
