@@ -361,14 +361,22 @@ const CalendarPage = () => {
       return;
     }
     try {
+      // Ensure invite_user_ids are integers
+      const inviteUserIds = Array.isArray(meetingForm.invite_user_ids) 
+        ? meetingForm.invite_user_ids.map(id => {
+            const numId = typeof id === 'string' ? parseInt(id, 10) : id;
+            return Number.isInteger(numId) && numId > 0 ? numId : null;
+          }).filter(id => id !== null)
+        : [];
+      
       const payload = {
-        title: meetingForm.title,
-        description: meetingForm.description || '',
+        title: meetingForm.title.trim(),
+        description: (meetingForm.description || '').trim(),
         start_time: moment(meetingForm.start_time).toISOString(),
         end_time: moment(meetingForm.end_time).toISOString(),
-        location: meetingForm.location || '',
-        project_id: meetingForm.project_id ? parseInt(meetingForm.project_id) : null,
-        invite_user_ids: Array.isArray(meetingForm.invite_user_ids) ? meetingForm.invite_user_ids : []
+        location: (meetingForm.location || '').trim(),
+        project_id: meetingForm.project_id ? parseInt(meetingForm.project_id, 10) : null,
+        invite_user_ids: inviteUserIds
       };
       
       await meetingsAPI.create(payload);
@@ -952,19 +960,31 @@ const CalendarPage = () => {
               <label>Invite Users</label>
               <select
                 multiple
-                value={meetingForm.invite_user_ids}
+                value={meetingForm.invite_user_ids.map(String)}
                 onChange={(e) => {
-                  const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
+                  const selected = Array.from(e.target.selectedOptions, option => {
+                    const val = parseInt(option.value, 10);
+                    return Number.isInteger(val) && val > 0 ? val : null;
+                  }).filter(id => id !== null);
                   setMeetingForm(prev => ({ ...prev, invite_user_ids: selected }));
                 }}
                 style={{ minHeight: '100px' }}
               >
-                {getAvailableUsersForInvitation().map(u => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
+                {getAvailableUsersForInvitation().length > 0 ? (
+                  getAvailableUsersForInvitation().map(u => (
+                    <option key={u.id} value={String(u.id)}>{u.name}</option>
+                  ))
+                ) : (
+                  <option disabled>No users available to invite</option>
+                )}
               </select>
               <small>
                 Hold Ctrl/Cmd to select multiple users
+                {meetingForm.invite_user_ids.length > 0 && (
+                  <span style={{ display: 'block', marginTop: '4px', color: 'var(--primary-color)' }}>
+                    {meetingForm.invite_user_ids.length} user(s) selected
+                  </span>
+                )}
                 {(user?.role === 'Team Lead' || user?.role === 'Manager') && 
                   ' (limited to users in your projects)'}
               </small>
