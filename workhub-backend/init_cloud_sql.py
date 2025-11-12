@@ -354,6 +354,24 @@ def _do_init():
     except Exception as e:
         print(f"⚠ Warning adding notifications column: {e}")
     
+    # Add related_group_id to notifications if it doesn't exist
+    try:
+        with db.engine.begin() as conn:
+            result = conn.execute(text("""
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='notifications' AND COLUMN_NAME='related_group_id'
+            """))
+            if result.scalar() == 0:
+                print("Adding related_group_id column to notifications table...")
+                conn.execute(text("ALTER TABLE notifications ADD related_group_id INT NULL"))
+                conn.execute(text("ALTER TABLE notifications ADD FOREIGN KEY (related_group_id) REFERENCES chat_groups(id)"))
+                print("✓ Added related_group_id column")
+            else:
+                print("✓ related_group_id column already exists")
+    except Exception as e:
+        print(f"⚠ Warning adding related_group_id column: {e}")
+    
     # Ensure all chat_messages columns exist (migration for existing tables)
     print("\nEnsuring all chat_messages columns exist...")
     try:

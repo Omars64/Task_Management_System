@@ -341,6 +341,17 @@ def init_database():
                         ALTER TABLE dbo.notifications ADD FOREIGN KEY (related_conversation_id) REFERENCES chat_conversations(id);
                     END
                 """))
+                # Add related_group_id to notifications if not exists
+                conn.execute(text("""
+                    IF NOT EXISTS (
+                        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='notifications' AND COLUMN_NAME='related_group_id'
+                    )
+                    BEGIN
+                        ALTER TABLE dbo.notifications ADD related_group_id INT NULL;
+                        ALTER TABLE dbo.notifications ADD FOREIGN KEY (related_group_id) REFERENCES chat_groups(id);
+                    END
+                """))
             print("✓ Applied schema migrations for projects/sprints/reminders/meetings/chat.")
         except Exception as e:
             print(f"Warning: migration steps failed: {e}")
