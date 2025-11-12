@@ -171,7 +171,12 @@ const Chat = () => {
       });
       
       // Mark all messages in conversation as read when viewing
-      chatAPI.markConversationRead(conversationId).catch(console.error);
+      chatAPI.markConversationRead(conversationId)
+        .then(() => {
+          // Dispatch event to refresh chat badge in sidebar
+          window.dispatchEvent(new Event('chat:refresh-count'));
+        })
+        .catch(console.error);
     } catch (error) {
       console.error('Failed to fetch messages:', error);
       // Don't show error for pending conversations
@@ -292,7 +297,12 @@ const Chat = () => {
     setSelectedConversation(conversation);
     fetchMessages(conversation.id);
     // Clear unread count server-side for this conversation
-    chatAPI.markConversationRead(conversation.id).catch(() => {});
+    chatAPI.markConversationRead(conversation.id)
+      .then(() => {
+        // Dispatch event to refresh chat badge in sidebar
+        window.dispatchEvent(new Event('chat:refresh-count'));
+      })
+      .catch(() => {});
   };
 
   const scrollToBottom = () => {

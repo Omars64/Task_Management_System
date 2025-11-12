@@ -23,36 +23,47 @@ const Layout = () => {
     const chatInterval = setInterval(fetchChatUnreadCount, 5000); // chat every 5s
     // Listen for notification updates from other components
     const onRefresh = () => fetchUnreadCount();
+    const onChatRefresh = () => fetchChatUnreadCount();
     window.addEventListener('notifications:refresh-count', onRefresh);
+    window.addEventListener('chat:refresh-count', onChatRefresh);
     return () => { 
       clearInterval(notifInterval); 
       clearInterval(chatInterval);
       window.removeEventListener('notifications:refresh-count', onRefresh);
+      window.removeEventListener('chat:refresh-count', onChatRefresh);
     };
   }, []);
 
-  // When route changes (e.g., navigating to /notifications), refresh badge immediately
+  // When route changes (e.g., navigating to /notifications or /chat), refresh badges immediately
   useEffect(() => {
     fetchUnreadCount();
+    if (location.pathname === '/chat' || location.pathname === '/notifications') {
+      fetchChatUnreadCount();
+    }
   }, [location.pathname]);
 
   const fetchUnreadCount = async () => {
     try {
       const response = await notificationsAPI.getUnreadCount();
-      setUnreadCount(response.data.unread_count);
+      setUnreadCount(response.data.unread_count || 0);
     } catch (error) {
       console.error('Failed to fetch unread count:', error);
+      setUnreadCount(0);
     }
   };
 
   const fetchChatUnreadCount = async () => {
     try {
       const convsRes = await chatAPI.getConversations();
-      const convs = convsRes.data || [];
-      const total = convs.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+      const convs = Array.isArray(convsRes.data) ? convsRes.data : [];
+      const total = convs.reduce((sum, c) => {
+        const unread = Number(c.unread_count) || 0;
+        return sum + unread;
+      }, 0);
       setChatUnreadCount(total);
     } catch (error) {
-      // silent fail to avoid spam
+      console.error('Failed to fetch chat unread count:', error);
+      setChatUnreadCount(0);
     }
   };
 
@@ -99,9 +110,12 @@ const Layout = () => {
                 <>
                   <span className="nav-label">{item.label}</span>
                   {item.badge > 0 && (
-                    <span className="nav-badge">{item.badge}</span>
+                    <span className="nav-badge">{item.badge > 99 ? '99+' : item.badge}</span>
                   )}
                 </>
+              )}
+              {!sidebarOpen && item.badge > 0 && (
+                <span className="nav-badge">{item.badge > 99 ? '99+' : item.badge}</span>
               )}
             </Link>
           ))}
