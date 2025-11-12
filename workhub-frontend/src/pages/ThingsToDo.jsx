@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatLocalDate, formatLocalTime } from '../utils/dateTime';
 import { FiPlus, FiTrash2, FiCheck, FiCircle } from 'react-icons/fi';
 
 const ThingsToDo = () => {
@@ -215,7 +216,7 @@ const ThingsToDo = () => {
                       fontSize: '0.8rem',
                       color: 'var(--text-light)'
                     }}>
-                      {new Date(item.createdAt).toLocaleDateString()} at {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatLocalDate(item.createdAt)} at {formatLocalTime(item.createdAt)}
                     </p>
                   </div>
                   

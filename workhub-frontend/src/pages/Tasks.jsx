@@ -10,6 +10,7 @@ import { useModal } from '../hooks/useModal';
 import Modal from '../components/Modal';
 import RichTextEditor from '../components/RichTextEditor';
 import RichTextDisplay from '../components/RichTextDisplay';
+import { formatLocalDate, formatLocalDateTime, formatForInput } from '../utils/dateTime';
 import './Tasks.css';
 
 const Tasks = () => {
@@ -509,7 +510,7 @@ const Tasks = () => {
       status: task.status,
       assigned_to: task.assigned_to || '',
       // Preserve date and time for validation (min lead time 1 hour)
-      due_date: task.due_date ? new Date(task.due_date).toISOString().slice(0,16) : '',
+      due_date: task.due_date ? formatForInput(task.due_date) : '',
       project_id: task.project_id || '',
       sprint_id: task.sprint_id || ''
     });
@@ -1001,7 +1002,7 @@ const Tasks = () => {
                   <p className="task-card-assignee">Assigned to: {task.assignee_name}</p>
                 )}
                 {task.due_date && (
-                  <p className="task-card-due">Due: {new Date(task.due_date).toLocaleDateString()}</p>
+                  <p className="task-card-due">Due: {formatLocalDate(task.due_date)}</p>
                 )}
                 <div className="task-card-footer" style={{ display: 'grid', gap: 8 }}>
                   <select
@@ -1265,7 +1266,7 @@ const Tasks = () => {
                 </div>
                 {selectedTask.due_date && (
                   <div>
-                    <strong>Due Date:</strong> {new Date(selectedTask.due_date).toLocaleDateString()}
+                    <strong>Due Date:</strong> {formatLocalDateTime(selectedTask.due_date)}
                   </div>
                 )}
               </div>
@@ -1318,7 +1319,11 @@ const Tasks = () => {
                   <div className="comments-list" style={{ display:'grid', gap:12 }}>
                     {selectedTask.comments
                       .filter(c => !c.parent_comment_id)
-                      .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+                      .sort((a,b) => {
+                        const dateA = new Date(a.created_at);
+                        const dateB = new Date(b.created_at);
+                        return dateB - dateA;
+                      })
                       .map(comment => (
                         <div 
                           key={comment.id} 
@@ -1330,7 +1335,7 @@ const Tasks = () => {
                             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                               <strong>{comment.user_name}</strong>
                               <span style={{ color:'var(--text-light)', fontSize:'0.875rem' }}>
-                                {new Date(comment.created_at).toLocaleString()}
+                                {formatLocalDateTime(comment.created_at)}
                               </span>
                             </div>
                             {user && (comment.user_id === user.id || isAdmin()) && (
@@ -1391,7 +1396,7 @@ const Tasks = () => {
                                       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                                         <strong style={{ fontSize:'0.9rem' }}>{reply.user_name}</strong>
                                         <span style={{ color:'var(--text-light)', fontSize:'0.8rem' }}>
-                                          {new Date(reply.created_at).toLocaleString()}
+                                          {formatLocalDateTime(reply.created_at)}
                                         </span>
                                       </div>
                                       {user && (reply.user_id === user.id || isAdmin()) && (

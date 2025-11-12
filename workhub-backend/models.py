@@ -1,10 +1,36 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
-from datetime import datetime
+from datetime import datetime, timezone
 import enum
 
 db = SQLAlchemy()
 bcrypt = Bcrypt()
+
+
+def format_utc_datetime(dt):
+    """
+    Format datetime to ISO 8601 string with 'Z' suffix for UTC.
+    Ensures all datetime values are properly marked as UTC for frontend consumption.
+    
+    Args:
+        dt: datetime object (naive or timezone-aware)
+    
+    Returns:
+        str: ISO 8601 formatted string with 'Z' suffix, or None if dt is None
+    """
+    if dt is None:
+        return None
+    
+    # If datetime is naive (no timezone), assume it's UTC
+    if dt.tzinfo is None:
+        # Make it timezone-aware as UTC
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        # Convert to UTC if it's not already
+        dt = dt.astimezone(timezone.utc)
+    
+    # Format with 'Z' suffix to explicitly mark as UTC
+    return dt.isoformat().replace('+00:00', 'Z')
 
 
 class UserRole(enum.Enum):
@@ -84,7 +110,7 @@ class User(db.Model):
             'theme': self.theme,
             'language': self.language,
             'notifications_enabled': self.notifications_enabled,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': format_utc_datetime(self.created_at),
             'email_verified': self.email_verified,
             'signup_status': self.signup_status
         }
@@ -93,7 +119,7 @@ class User(db.Model):
         if include_verification:
             data.update({
                 'approved_by': self.approved_by,
-                'approved_at': self.approved_at.isoformat() if self.approved_at else None,
+                'approved_at': format_utc_datetime(self.approved_at),
                 'rejection_reason': self.rejection_reason,
                 'approver_name': self.approver.name if self.approver else None
             })
@@ -142,10 +168,10 @@ class Task(db.Model):
             'description': self.description,
             'priority': self.priority,
             'status': self.status,
-            'due_date': self.due_date.isoformat() if self.due_date else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'due_date': format_utc_datetime(self.due_date),
+            'created_at': format_utc_datetime(self.created_at),
+            'updated_at': format_utc_datetime(self.updated_at),
+            'completed_at': format_utc_datetime(self.completed_at),
             'assigned_to': self.assigned_to,
             'created_by': self.created_by,
             'assignee_name': self.assignee.name if (self.assignee and hasattr(self.assignee, 'name')) else None,
@@ -205,8 +231,8 @@ class Project(db.Model):
             'id': self.id,
             'name': self.name,
             'description': self.description,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': format_utc_datetime(self.created_at),
+            'updated_at': format_utc_datetime(self.updated_at),
             'owner_id': self.owner_id,
             'owner_name': self.owner.name if self.owner else None,
         }
@@ -233,10 +259,10 @@ class Sprint(db.Model):
             'project_id': self.project_id,
             'name': self.name,
             'goal': self.goal,
-            'start_date': self.start_date.isoformat() if self.start_date else None,
-            'end_date': self.end_date.isoformat() if self.end_date else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'start_date': format_utc_datetime(self.start_date),
+            'end_date': format_utc_datetime(self.end_date),
+            'created_at': format_utc_datetime(self.created_at),
+            'updated_at': format_utc_datetime(self.updated_at),
         }
         if include_project:
             data['project_name'] = self.project.name if getattr(self, 'project', None) else None
@@ -281,7 +307,7 @@ class Notification(db.Model):
             'message': self.message,
             'type': self.type,
             'is_read': self.is_read,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': format_utc_datetime(self.created_at),
             'related_task_id': self.related_task_id,
             'related_conversation_id': self.related_conversation_id,
             'related_group_id': self.related_group_id
@@ -305,7 +331,7 @@ class TimeLog(db.Model):
             'user_id': self.user_id,
             'hours': self.hours,
             'description': self.description,
-            'logged_at': self.logged_at.isoformat() if self.logged_at else None
+            'logged_at': format_utc_datetime(self.logged_at)
         }
 
 
@@ -329,7 +355,7 @@ class Comment(db.Model):
             'user_id': self.user_id,
             'user_name': self.user.name if (self.user and hasattr(self.user, 'name')) else None,
             'content': self.content,
-            'created_at': self.created_at.isoformat() if (hasattr(self, 'created_at') and self.created_at) else None,
+            'created_at': format_utc_datetime(self.created_at) if hasattr(self, 'created_at') else None,
             'parent_comment_id': self.parent_comment_id
         }
 
@@ -450,7 +476,7 @@ class FileAttachment(db.Model):
             'original_filename': self.original_filename,
             'file_size': self.file_size,
             'file_type': self.file_type,
-            'uploaded_at': self.uploaded_at.isoformat() if self.uploaded_at else None
+            'uploaded_at': format_utc_datetime(self.uploaded_at)
         }
 
 
@@ -479,12 +505,12 @@ class Reminder(db.Model):
             'task_id': self.task_id,
             'title': self.title,
             'description': self.description,
-            'reminder_date': self.reminder_date.isoformat() if self.reminder_date else None,
+            'reminder_date': format_utc_datetime(self.reminder_date),
             'reminder_type': self.reminder_type,
             'days_before': self.days_before,
-            'time_based': self.time_based.isoformat() if self.time_based else None,
+            'time_based': format_utc_datetime(self.time_based),
             'is_sent': self.is_sent,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': format_utc_datetime(self.created_at),
             'task_title': self.task.title if self.task else None
         }
 
@@ -512,15 +538,15 @@ class Meeting(db.Model):
             'id': self.id,
             'title': self.title,
             'description': self.description,
-            'start_time': self.start_time.isoformat() if self.start_time else None,
-            'end_time': self.end_time.isoformat() if self.end_time else None,
+            'start_time': format_utc_datetime(self.start_time),
+            'end_time': format_utc_datetime(self.end_time),
             'location': self.location,
             'created_by': self.created_by,
             'creator_name': self.creator.name if self.creator else None,
             'project_id': self.project_id,
             'project_name': self.project.name if self.project else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': format_utc_datetime(self.created_at),
+            'updated_at': format_utc_datetime(self.updated_at),
             'invitations': [inv.to_dict() for inv in self.invitations] if self.invitations else []
         }
 
@@ -547,8 +573,8 @@ class MeetingInvitation(db.Model):
             'user_email': self.user.email if self.user else None,
             'status': self.status,
             'rejection_reason': self.rejection_reason,
-            'responded_at': self.responded_at.isoformat() if self.responded_at else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'responded_at': format_utc_datetime(self.responded_at),
+            'created_at': format_utc_datetime(self.created_at)
         }
 
 
@@ -595,9 +621,9 @@ class ChatConversation(db.Model):
                 'other_user': None,
                 'status': self.status,
                 'requested_by': self.requested_by,
-                'requested_at': self.requested_at.isoformat() if self.requested_at else None,
-                'accepted_at': self.accepted_at.isoformat() if self.accepted_at else None,
-                'created_at': self.created_at.isoformat() if self.created_at else None,
+                'requested_at': format_utc_datetime(self.requested_at),
+                'accepted_at': format_utc_datetime(self.accepted_at),
+                'created_at': format_utc_datetime(self.created_at),
                 'unread_count': 0,
                 'last_message': None,
                 'last_message_time': None
@@ -668,12 +694,12 @@ class ChatConversation(db.Model):
             } if other_user else None,
             'status': self.status,
             'requested_by': self.requested_by,
-            'requested_at': self.requested_at.isoformat() if self.requested_at else None,
-            'accepted_at': self.accepted_at.isoformat() if self.accepted_at else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'requested_at': format_utc_datetime(self.requested_at),
+            'accepted_at': format_utc_datetime(self.accepted_at),
+            'created_at': format_utc_datetime(self.created_at),
             'unread_count': unread_count,
             'last_message': last_message_preview,
-            'last_message_time': last_message.created_at.isoformat() if last_message and hasattr(last_message, 'created_at') and last_message.created_at else None
+            'last_message_time': format_utc_datetime(last_message.created_at) if last_message and hasattr(last_message, 'created_at') and last_message.created_at else None
         }
 
 
@@ -754,9 +780,9 @@ class ChatMessage(db.Model):
             'reply_to': reply_info,
             'delivery_status': getattr(self, 'delivery_status', 'sent'),
             'is_read': getattr(self, 'is_read', False),
-            'read_at': getattr(self, 'read_at', None).isoformat() if getattr(self, 'read_at', None) else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': getattr(self, 'updated_at', None).isoformat() if getattr(self, 'updated_at', None) else None,
+            'read_at': format_utc_datetime(getattr(self, 'read_at', None)),
+            'created_at': format_utc_datetime(self.created_at),
+            'updated_at': format_utc_datetime(getattr(self, 'updated_at', None)),
             'is_edited': getattr(self, 'is_edited', False),
             'is_deleted': getattr(self, 'is_deleted', False),
             'reactions': reactions_list
@@ -809,7 +835,7 @@ class MessageReaction(db.Model):
             'user_id': self.user_id,
             'user_name': self.user.name if self.user else None,
             'emoji': emoji_value,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': format_utc_datetime(self.created_at)
         }
         return result
 
@@ -834,7 +860,7 @@ class ChatGroup(db.Model):
             'id': self.id,
             'name': self.name,
             'created_by': self.created_by,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': format_utc_datetime(self.created_at),
             'member_count': len(self.members) if self.members else 0
         }
 
@@ -861,7 +887,7 @@ class ChatGroupMember(db.Model):
             'user_id': self.user_id,
             'user_name': self.user.name if self.user else None,
             'role': self.role,
-            'joined_at': self.joined_at.isoformat() if self.joined_at else None
+            'joined_at': format_utc_datetime(self.joined_at)
         }
 
 
@@ -931,8 +957,8 @@ class GroupMessage(db.Model):
             'content': self.content,
             'reply_to_id': self.reply_to_id,
             'reply_to': reply_info,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': format_utc_datetime(self.created_at),
+            'updated_at': format_utc_datetime(self.updated_at),
             'is_edited': self.is_edited,
             'is_deleted': self.is_deleted,
             'reactions': reactions_list
@@ -984,7 +1010,7 @@ class GroupMessageReaction(db.Model):
             'user_id': self.user_id,
             'user_name': self.user.name if self.user else None,
             'emoji': emoji_value,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_at': format_utc_datetime(self.created_at),
         }
 
 class GroupInvitation(db.Model):
@@ -1013,6 +1039,6 @@ class GroupInvitation(db.Model):
             'user_email': self.user.email if self.user else None,
             'status': self.status,
             'rejection_reason': self.rejection_reason,
-            'responded_at': self.responded_at.isoformat() if self.responded_at else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'responded_at': format_utc_datetime(self.responded_at),
+            'created_at': format_utc_datetime(self.created_at)
         }

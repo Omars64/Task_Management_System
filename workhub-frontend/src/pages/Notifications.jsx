@@ -5,6 +5,7 @@ import { FiCheckCircle, FiTrash2 } from 'react-icons/fi';
 import { useModal } from '../hooks/useModal';
 import { useToast } from '../context/ToastContext';
 import Modal from '../components/Modal';
+import { formatLocalDateTime } from '../utils/dateTime';
 
 const Notifications = () => {
   const { modalState, showConfirm, showSuccess, closeModal } = useModal();
@@ -186,7 +187,7 @@ const Notifications = () => {
                       {notif.message}
                     </p>
                     <span style={{ fontSize: '12px', color: 'var(--text-light)' }}>
-                      {new Date(notif.created_at).toLocaleString()}
+                      {formatLocalDateTime(notif.created_at)}
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }} onClick={(e) => e.stopPropagation()}>

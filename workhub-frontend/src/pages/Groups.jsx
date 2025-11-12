@@ -6,6 +6,7 @@ import { useModal } from '../hooks/useModal';
 import { FiSend, FiSmile, FiPaperclip, FiX, FiCheck } from 'react-icons/fi';
 import ReactionPicker from '../components/ReactionPicker';
 import moment from 'moment';
+import { formatLocalTime } from '../utils/dateTime';
 import './Chat.css';
 
 const Groups = () => {
@@ -764,7 +765,7 @@ const Groups = () => {
                           <div className="message-footer">
                             <div className="message-time-status">
                               <span className="message-time">
-                                {new Date(m.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                {formatLocalTime(m.created_at)}
                               </span>
                             </div>
                           </div>

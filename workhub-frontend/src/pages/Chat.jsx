@@ -6,6 +6,7 @@ import Modal from '../components/Modal';
 import { useModal } from '../hooks/useModal';
 import ReactionPicker from '../components/ReactionPicker';
 import moment from 'moment';
+import { formatLocalTime } from '../utils/dateTime';
 import './Chat.css';
 
 const Chat = () => {
@@ -969,7 +970,7 @@ const Chat = () => {
                       <div className="message-footer">
                         <div className="message-time-status">
                           <span className="message-time">
-                            {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                            {formatLocalTime(msg.created_at)}
                           </span>
                           {getDeliveryIcon(msg)}
                         </div>
